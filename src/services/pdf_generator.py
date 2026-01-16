@@ -3,10 +3,11 @@ PDFGenerator - Generuje HTML i PDF z szablonów Jinja2
 """
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
-import pdfkit
+from xhtml2pdf import pisa
+from io import BytesIO
 from datetime import datetime
 from src.config.constants import (
-    TEMPLATES_PATH, OUTPUT_PATH, PDF_OPTIONS,
+    TEMPLATES_PATH, OUTPUT_PATH,
     TEMPLATE_PL_TECH, TEMPLATE_EN_TECH,
     TEMPLATE_PL_BOK, TEMPLATE_EN_BOK
 )
@@ -46,10 +47,8 @@ class PDFGenerator:
         return template.render(**context)
 
     def generate_html(self, declaration: Declaration) -> Path:
-        """Zapisuje podgląd HTML i zwraca ŚCIEŻKĘ ABSOLUTNĄ (rozwiązuje błąd URI)"""
+        """Zapisuje podgląd HTML i zwraca ścieżkę absolutną"""
         html_content = self.generate_html_content(declaration)
-
-        # .resolve() zamienia ścieżkę relatywną na absolutną (C:\Users\...)
         output_file = (OUTPUT_PATH / "preview_temp.html").resolve()
 
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -57,10 +56,22 @@ class PDFGenerator:
         return output_file
 
     def generate_pdf_bytes(self, declaration: Declaration) -> bytes:
-        """Generuje PDF i zwraca go jako bajty (naprawia błąd braku atrybutu)"""
+        """Generuje PDF i zwraca jako bajty do zapisu przez użytkownika"""
         html_content = self.generate_html_content(declaration)
+
         try:
-            # False oznacza, że pdfkit zwróci dane zamiast zapisywać do pliku
-            return pdfkit.from_string(html_content, False, options=PDF_OPTIONS)
+            # xhtml2pdf - czysto pythonowa biblioteka
+            result = BytesIO()
+            pisa_status = pisa.CreatePDF(
+                src=html_content,
+                dest=result,
+                encoding='utf-8'
+            )
+
+            if pisa_status.err:
+                raise Exception("xhtml2pdf zgłosił błędy podczas konwersji")
+
+            return result.getvalue()
+
         except Exception as e:
-            raise Exception(f"Błąd silnika wkhtmltopdf: {e}")
+            raise Exception(f"Błąd generowania PDF: {e}")
