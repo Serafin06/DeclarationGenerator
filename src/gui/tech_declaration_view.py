@@ -16,6 +16,13 @@ class TechDeclarationView(QWidget):
         super().__init__()
         self.data_loader = data_loader
         self.pdf_generator = PDFGenerator(data_loader)
+
+        # Prefiksy nazw produktów dla języków
+        self.product_prefixes = {
+            'pl': "Folia wielowarstwowa laminat",
+            'en': "Multilayer foil laminate"
+        }
+
         self._init_ui()
         self._load_initial_data()
 
@@ -38,7 +45,7 @@ class TechDeclarationView(QWidget):
         product_group = self._create_product_section()
         layout.addWidget(product_group)
 
-        # Podgląd struktury
+        # Podgląd substancji
         preview_group = self._create_preview_section()
         layout.addWidget(preview_group)
 
@@ -62,6 +69,10 @@ class TechDeclarationView(QWidget):
         self.radio_en = QRadioButton("English")
         self.radio_pl.setChecked(True)
 
+        # Połącz zmianę języka z aktualizacją nazwy produktu
+        self.radio_pl.toggled.connect(self._update_structure_preview)
+        self.radio_en.toggled.connect(self._update_structure_preview)
+
         self.lang_group.addButton(self.radio_pl, 1)
         self.lang_group.addButton(self.radio_en, 2)
 
@@ -78,7 +89,7 @@ class TechDeclarationView(QWidget):
         self.radio_tech = QRadioButton("Technologiczna")
         self.radio_bok = QRadioButton("BOK (z danymi klienta)")
         self.radio_tech.setChecked(True)
-        self.radio_bok.setEnabled(False)  # Tymczasowo wyłączone
+        self.radio_bok.setEnabled(False)
 
         self.type_group.addButton(self.radio_tech, 1)
         self.type_group.addButton(self.radio_bok, 2)
@@ -96,37 +107,38 @@ class TechDeclarationView(QWidget):
         group = QGroupBox("Dane produktu")
         layout = QFormLayout()
 
-        # Nazwa produktu
-        self.input_product_name = QLineEdit()
-        self.input_product_name.setPlaceholderText("Np. Folia wielowarstwowa laminat OPA/PE...")
-        layout.addRow("Nazwa produktu:", self.input_product_name)
-
         # Wybór materiału 1
         self.combo_material1 = QComboBox()
         self.combo_material1.currentTextChanged.connect(self._update_structure_preview)
-        layout.addRow("Materiał 1:", self.combo_material1)
+        layout.addRow("Materiał 1 (zewnętrzny):", self.combo_material1)
 
         # Wybór materiału 2
         self.combo_material2 = QComboBox()
         self.combo_material2.currentTextChanged.connect(self._update_structure_preview)
-        layout.addRow("Materiał 2:", self.combo_material2)
+        layout.addRow("Materiał 2 (wewnętrzny):", self.combo_material2)
 
-        # Struktura (auto-generowana)
+        # Struktura (wyświetlana dla pewności)
         self.label_structure = QLabel("")
-        self.label_structure.setStyleSheet("font-weight: bold; color: #27ae60;")
-        layout.addRow("Struktura:", self.label_structure)
+        self.label_structure.setStyleSheet("font-weight: bold; color: #7f8c8d;")
+        layout.addRow("Zidentyfikowana struktura:", self.label_structure)
+
+        # Nazwa produktu (Auto-generowana, ale edytowalna w razie potrzeby)
+        self.input_product_name = QLineEdit()
+        self.input_product_name.setStyleSheet("font-weight: bold; color: #2980b9; background-color: #f8f9fa;")
+        layout.addRow("Pełna nazwa produktu (pkt 1):", self.input_product_name)
 
         group.setLayout(layout)
         return group
 
     def _create_preview_section(self) -> QGroupBox:
-        """Tworzy sekcję podglądu"""
-        group = QGroupBox("Podgląd substancji dla wybranej struktury")
+        """Tworzy sekcję podglądu substancji"""
+        group = QGroupBox("Weryfikacja bazy danych dla struktury")
         layout = QVBoxLayout()
 
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
-        self.preview_text.setMaximumHeight(150)
+        self.preview_text.setMaximumHeight(120)
+        self.preview_text.setStyleSheet("background-color: #fdfefe;")
         layout.addWidget(self.preview_text)
 
         group.setLayout(layout)
@@ -146,7 +158,7 @@ class TechDeclarationView(QWidget):
         btn_generate.clicked.connect(self._generate_pdf)
         btn_generate.setStyleSheet("""
             QPushButton {
-                background-color: #3498db;
+                background-color: #27ae60;
                 color: white;
                 padding: 10px 30px;
                 font-size: 14px;
@@ -154,7 +166,7 @@ class TechDeclarationView(QWidget):
                 border-radius: 5px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #219150;
             }
         """)
         layout.addWidget(btn_generate)
@@ -162,132 +174,129 @@ class TechDeclarationView(QWidget):
         return layout
 
     def _load_initial_data(self):
-        """Ładuje początkowe dane z serwera"""
+        """Ładuje materiały (PET, OPA, PE, PP) i dane struktur"""
         try:
             structures = self.data_loader.get_laminate_structures()
-            materials = structures.get('materials', [])
+            materials = structures.get('materials', ["PET", "OPA", "PE", "PP"])
 
+            self.combo_material1.clear()
+            self.combo_material2.clear()
             self.combo_material1.addItems(materials)
             self.combo_material2.addItems(materials)
 
-            if len(materials) > 1:
-                self.combo_material2.setCurrentIndex(1)
+            if "PE" in materials:
+                self.combo_material2.setCurrentText("PE")
 
             self._update_structure_preview()
         except Exception as e:
             QMessageBox.warning(self, "Błąd", f"Nie udało się załadować danych: {e}")
 
     def _update_structure_preview(self):
-        """Aktualizuje podgląd struktury i substancji"""
-        mat1 = self.combo_material1.currentText()
-        mat2 = self.combo_material2.currentText()
+        """
+        Automatycznie aktualizuje nazwę produktu (pkt 1) oraz
+        weryfikuje dane struktury w bazie danych.
+        """
+        try:
+            # Pobranie wybranych materiałów
+            mat1 = self.combo_material1.currentText()
+            mat2 = self.combo_material2.currentText()
 
-        if mat1 and mat2:
+            if not mat1 or not mat2:
+                return
+
+            # Składanie struktury (np. PET/PE)
             structure = f"{mat1}/{mat2}"
             self.label_structure.setText(structure)
 
-            # Pobierz substancje dla tej struktury
-            try:
-                structures = self.data_loader.get_laminate_structures()
-                structure_data = structures.get('structures', {}).get(structure, {})
+            # 1. Automatyczne generowanie pełnej nazwy dla pkt 1
+            lang = 'pl' if self.radio_pl.isChecked() else 'en'
+            prefix = self.product_prefixes.get(lang, self.product_prefixes.get('pl'))
 
-                if structure_data:
-                    substances = structure_data.get('substances', [])
-                    dual_use = structure_data.get('dual_use', [])
+            # TUTAJ BYŁ BŁĄD - Usuwamy i zostawiamy sam string:
+            full_name = f"{prefix} {structure}"
+            self.input_product_name.setText(full_name)
 
-                    preview = f"Substancje SML: {len(substances)}\n"
-                    preview += f"Substancje dual use: {len(dual_use)}\n\n"
-                    preview += "Struktura rozpoznana w bazie danych."
-                    self.preview_text.setPlainText(preview)
-                else:
-                    self.preview_text.setPlainText("⚠️ Struktura nie została jeszcze zdefiniowana w bazie danych.")
-            except Exception as e:
-                self.preview_text.setPlainText(f"Błąd: {e}")
+            # 2. Pobieranie danych SML i Dual Use z bazy JSON
+            structures_data = self.data_loader.get_laminate_structures()
+            # Zabezpieczenie przed brakiem danych
+            if not structures_data:
+                self.preview_text.setPlainText("Błąd: Nie można załadować bazy struktur.")
+                return
+
+            structure_info = structures_data.get('structures', {}).get(structure)
+
+            if structure_info:
+                substances = structure_info.get('substances', [])
+                dual_use = structure_info.get('dual_use', [])
+
+                # TUTAJ BYŁ BŁĄD - Usuwamy:
+                preview = f"✅ Struktura rozpoznana: {structure}\n"
+                preview += f"Liczba substancji SML (tabela pkt 3): {len(substances)}\n"
+                preview += f"Substancje Dual Use (pkt 4): {len(dual_use)}"
+                self.preview_text.setPlainText(preview)
+            else:
+                self.preview_text.setPlainText(f"⚠️ Struktura {structure} nie widnieje w bazie. Tabele będą puste.")
+
+        except Exception as e:
+            print(f"Błąd podczas aktualizacji podglądu: {e}")
 
     def _validate_input(self) -> bool:
-        """Waliduje dane wejściowe"""
+        """Waliduje dane przed generowaniem"""
         if not self.input_product_name.text().strip():
-            QMessageBox.warning(self, "Błąd", "Wprowadź nazwę produktu.")
+            QMessageBox.warning(self, "Błąd", "Nazwa produktu nie może być pusta.")
             return False
-
-        if not self.label_structure.text():
-            QMessageBox.warning(self, "Błąd", "Wybierz materiały struktury.")
-            return False
-
         return True
 
     def _create_declaration(self) -> Declaration:
-        """Tworzy obiekt Declaration z wprowadzonych danych"""
+        """Tworzy model danych dokumentu"""
         declaration = Declaration()
         declaration.language = 'pl' if self.radio_pl.isChecked() else 'en'
-        declaration.declaration_type = 'tech' if self.radio_tech.isChecked() else 'bok'
+        declaration.declaration_type = 'tech'
         declaration.generation_date = date.today()
 
+        # Punkt 1: Nazwa i struktura
         declaration.product = Product(
             name=self.input_product_name.text().strip(),
             structure=self.label_structure.text()
         )
 
-        # Pobierz dane tabel dla struktury
+        # Dane tabelaryczne
         try:
             structures = self.data_loader.get_laminate_structures()
             structure_data = structures.get('structures', {}).get(declaration.product.structure, {})
-
             declaration.substances_table = structure_data.get('substances', [])
             declaration.dual_use_list = structure_data.get('dual_use', [])
-        except Exception as e:
-            QMessageBox.warning(self, "Ostrzeżenie", f"Nie udało się załadować danych struktury: {e}")
+        except:
+            declaration.substances_table = []
+            declaration.dual_use_list = []
 
         return declaration
 
     def _preview_html(self):
-        """Generuje i otwiera podgląd HTML"""
-        if not self._validate_input():
-            return
-
+        if not self._validate_input(): return
         try:
             declaration = self._create_declaration()
             html_path = self.pdf_generator.generate_html(declaration)
-
             import webbrowser
             webbrowser.open(html_path.as_uri())
         except Exception as e:
-            QMessageBox.critical(self, "Błąd", f"Nie udało się wygenerować podglądu:\n{e}")
+            QMessageBox.critical(self, "Błąd", f"Błąd podglądu: {e}")
 
     def _generate_pdf(self):
-        """Generuje PDF z możliwością wyboru ścieżki zapisu"""
-        if not self._validate_input():
-            return
-
+        if not self._validate_input(): return
         try:
             declaration = self._create_declaration()
-
-            # Generuj PDF w pamięci (jako bajty)
             pdf_data = self.pdf_generator.generate_pdf_bytes(declaration)
 
-            # Otwórz okno dialogowe "Zapisz jako"
-            default_filename = f"Deklaracja_zgodnosci_{declaration.product.name.replace(' ', '_')}.pdf"
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Zapisz deklarację jako",
-                default_filename,
-                "Pliki PDF (*.pdf)"
-            )
+            filename = f"Deklaracja_{declaration.product.structure.replace('/', '_')}.pdf"
+            file_path, _ = QFileDialog.getSaveFileName(self, "Zapisz PDF", filename, "Pliki PDF (*.pdf)")
 
-            # Jeśli użytkownik wybrał ścieżkę (nie kliknął "Anuluj")
             if file_path:
                 with open(file_path, 'wb') as f:
                     f.write(pdf_data)
-                QMessageBox.information(
-                    self,
-                    "Sukces",
-                    f"Deklaracja została zapisana w:\n{file_path}"
-                )
-            else:
-                QMessageBox.information(self, "Anulowano", "Zapisywanie deklaracji zostało anulowane.")
+                QMessageBox.information(self, "Sukces", "Plik został zapisany.")
         except Exception as e:
-            QMessageBox.critical(self, "Błąd", f"Nie udało się wygenerować PDF:\n{e}")
+            QMessageBox.critical(self, "Błąd", f"Błąd generowania: {e}")
 
     def refresh_data(self):
-        """Odświeża dane z serwera"""
         self._load_initial_data()
