@@ -4,12 +4,10 @@ TechDeclarationView - Widok do generowania deklaracji technologicznej/BOK
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QComboBox, QPushButton, QGroupBox,
                              QTextEdit, QMessageBox, QRadioButton, QButtonGroup,
-                             QFormLayout, QCheckBox)
-from PyQt5.QtCore import Qt
+                             QFormLayout, QCheckBox, QFileDialog)
 from datetime import date
 from src.models.declaration import Declaration, Product
 from src.services.pdf_generator import PDFGenerator
-
 
 class TechDeclarationView(QWidget):
     """Widok do wprowadzania danych i generowania deklaracji"""
@@ -257,22 +255,36 @@ class TechDeclarationView(QWidget):
             QMessageBox.critical(self, "Błąd", f"Nie udało się wygenerować podglądu:\n{e}")
 
     def _generate_pdf(self):
-        """Generuje PDF"""
+        """Generuje PDF z możliwością wyboru ścieżki zapisu"""
         if not self._validate_input():
             return
 
         try:
             declaration = self._create_declaration()
-            pdf_path = self.pdf_generator.generate_pdf(declaration)
 
-            QMessageBox.information(
+            # Generuj PDF w pamięci (jako bajty)
+            pdf_data = self.pdf_generator.generate_pdf_bytes(declaration)
+
+            # Otwórz okno dialogowe "Zapisz jako"
+            default_filename = f"Deklaracja_zgodnosci_{declaration.product.name.replace(' ', '_')}.pdf"
+            file_path, _ = QFileDialog.getSaveFileName(
                 self,
-                "Sukces",
-                f"PDF wygenerowany:\n{pdf_path}"
+                "Zapisz deklarację jako",
+                default_filename,
+                "Pliki PDF (*.pdf)"
             )
 
-            import webbrowser
-            webbrowser.open(pdf_path.parent.as_uri())
+            # Jeśli użytkownik wybrał ścieżkę (nie kliknął "Anuluj")
+            if file_path:
+                with open(file_path, 'wb') as f:
+                    f.write(pdf_data)
+                QMessageBox.information(
+                    self,
+                    "Sukces",
+                    f"Deklaracja została zapisana w:\n{file_path}"
+                )
+            else:
+                QMessageBox.information(self, "Anulowano", "Zapisywanie deklaracji zostało anulowane.")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Nie udało się wygenerować PDF:\n{e}")
 

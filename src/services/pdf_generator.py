@@ -12,7 +12,6 @@ from src.config.constants import (
 )
 from src.models.declaration import Declaration
 
-
 class PDFGenerator:
     """Generator dokumentów HTML i PDF"""
 
@@ -63,12 +62,18 @@ class PDFGenerator:
         pdf_path = html_path.with_suffix('.pdf')
 
         try:
-            pdfkit.from_file(
-                str(html_path),
-                str(pdf_path),
-                options=PDF_OPTIONS
-            )
-            return pdf_path
+            # === WYŁĄCZONE - wymaga wkhtmltopdf ===
+            # pdfkit.from_file(
+            #     str(html_path),
+            #     str(pdf_path),
+            #     options=PDF_OPTIONS
+            # )
+            # return pdf_path
+
+            # === TYMCZASOWO - zwracamy tylko HTML ===
+            print(f"INFO: Generowanie PDF wyłączone. HTML dostępny: {html_path}")
+            return html_path  # Zwracamy HTML zamiast PDF
+
         except Exception as e:
             raise Exception(f"Błąd generowania PDF: {e}\n"
-                            "Sprawdź czy wkhtmltopdf jest zainstalowany.")
+                          "Sprawdź czy wkhtmltopdf jest zainstalowany.")

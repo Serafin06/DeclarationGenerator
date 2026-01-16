@@ -10,7 +10,6 @@ from src.gui.tech_declaration_view import TechDeclarationView
 from src.gui.data_editor_view import DataEditorView
 from src.services.data_loader import DataLoader
 
-
 class MainWindow(QMainWindow):
     """Główne okno aplikacji z nawigacją między widokami"""
 
@@ -21,16 +20,16 @@ class MainWindow(QMainWindow):
         self._init_ui()
 
     def _check_server_connection(self):
-        """Sprawdza połączenie z serwerem przy starcie"""
+        """Sprawdza połączenie z danymi przy starcie"""
         try:
             # Próba załadowania podstawowych danych
             self.data_loader.get_texts('pl')
         except FileNotFoundError as e:
             QMessageBox.critical(
                 self,
-                "Błąd połączenia",
-                f"Nie można połączyć się z serwerem:\n{e}\n\n"
-                "Sprawdź połączenie sieciowe i uprawnienia."
+                "Błąd danych",
+                f"Nie można załadować plików konfiguracyjnych:\n{e}\n\n"
+                "Upewnij się że folder 'templates' zawiera wszystkie pliki JSON."
             )
 
     def _init_ui(self):
