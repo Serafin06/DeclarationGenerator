@@ -21,7 +21,7 @@ class PDFGenerator:
             loader=FileSystemLoader(str(TEMPLATES_PATH)),
             autoescape=True
         )
-        OUTPUT_PATH.mkdir(exist_ok=True)
+        OUTPUT_PATH.mkdir(exist_ok=True, parents=True)
 
     def _get_template_path(self, declaration: Declaration) -> Path:
         """Zwraca odpowiednią ścieżkę szablonu"""
@@ -31,49 +31,36 @@ class PDFGenerator:
             return TEMPLATE_PL_BOK if declaration.language == 'pl' else TEMPLATE_EN_BOK
 
     def _prepare_context(self, declaration: Declaration) -> dict:
-        """Przygotowuje kontekst dla szablonu (połączenie danych + teksty)"""
+        """Przygotowuje kontekst dla szablonu"""
         texts = self.data_loader.get_texts(declaration.language)
         context = declaration.to_template_dict()
         context['texts'] = texts
+        context['generation_date'] = declaration.generation_date.strftime("%d.%m.%Y")
         return context
 
-    def generate_html(self, declaration: Declaration) -> Path:
-        """Generuje HTML z szablonu"""
+    def generate_html_content(self, declaration: Declaration) -> str:
+        """Renderuje szablon do stringa HTML"""
         template_path = self._get_template_path(declaration)
-        template_name = template_path.name
-
-        template = self.env.get_template(template_name)
+        template = self.env.get_template(template_path.name)
         context = self._prepare_context(declaration)
+        return template.render(**context)
 
-        html_content = template.render(**context)
+    def generate_html(self, declaration: Declaration) -> Path:
+        """Zapisuje podgląd HTML i zwraca ŚCIEŻKĘ ABSOLUTNĄ (rozwiązuje błąd URI)"""
+        html_content = self.generate_html_content(declaration)
 
-        # Zapisz HTML
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = OUTPUT_PATH / f"declaration_{timestamp}.html"
+        # .resolve() zamienia ścieżkę relatywną na absolutną (C:\Users\...)
+        output_file = (OUTPUT_PATH / "preview_temp.html").resolve()
 
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html_content)
-
         return output_file
 
-    def generate_pdf(self, declaration: Declaration) -> Path:
-        """Generuje PDF przez HTML"""
-        html_path = self.generate_html(declaration)
-        pdf_path = html_path.with_suffix('.pdf')
-
+    def generate_pdf_bytes(self, declaration: Declaration) -> bytes:
+        """Generuje PDF i zwraca go jako bajty (naprawia błąd braku atrybutu)"""
+        html_content = self.generate_html_content(declaration)
         try:
-            # === WYŁĄCZONE - wymaga wkhtmltopdf ===
-            # pdfkit.from_file(
-            #     str(html_path),
-            #     str(pdf_path),
-            #     options=PDF_OPTIONS
-            # )
-            # return pdf_path
-
-            # === TYMCZASOWO - zwracamy tylko HTML ===
-            print(f"INFO: Generowanie PDF wyłączone. HTML dostępny: {html_path}")
-            return html_path  # Zwracamy HTML zamiast PDF
-
+            # False oznacza, że pdfkit zwróci dane zamiast zapisywać do pliku
+            return pdfkit.from_string(html_content, False, options=PDF_OPTIONS)
         except Exception as e:
-            raise Exception(f"Błąd generowania PDF: {e}\n"
-                          "Sprawdź czy wkhtmltopdf jest zainstalowany.")
+            raise Exception(f"Błąd silnika wkhtmltopdf: {e}")

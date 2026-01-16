@@ -283,20 +283,49 @@ class TechDeclarationView(QWidget):
             QMessageBox.critical(self, "Błąd", f"Błąd podglądu: {e}")
 
     def _generate_pdf(self):
-        if not self._validate_input(): return
+        """Generuje PDF z możliwością wyboru ścieżki zapisu przez użytkownika."""
+        if not self._validate_input():
+            return
+
         try:
+            # 1. Stwórz obiekt deklaracji na podstawie danych z formularza
             declaration = self._create_declaration()
+
+            # 2. Wygeneruj PDF jako dane w pamięci
             pdf_data = self.pdf_generator.generate_pdf_bytes(declaration)
 
-            filename = f"Deklaracja_{declaration.product.structure.replace('/', '_')}.pdf"
-            file_path, _ = QFileDialog.getSaveFileName(self, "Zapisz PDF", filename, "Pliki PDF (*.pdf)")
+            # 3. Przygotuj domyślną nazwę pliku i otwórz okno "Zapisz jako"
+            safe_product_name = "".join(c for c in declaration.product.name if c.isalnum() or c in (' ', '-')).rstrip()
+            default_filename = f"Deklaracja_{safe_product_name.replace(' ', '_')}.pdf"
 
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,  # Rodzic okna
+                "Zapisz deklarację jako",  # Tytuł okna
+                default_filename,  # Domyślna nazwa pliku
+                "Pliki PDF (*.pdf)"  # Filtr
+            )
+
+            # 4. Jeśli użytkownik wybrał ścieżkę (nie kliknął "Anuluj")
             if file_path:
-                with open(file_path, 'wb') as f:
+                with open(file_path, 'wb') as f:  # 'wb' - zapis w trybie binarnym
                     f.write(pdf_data)
-                QMessageBox.information(self, "Sukces", "Plik został zapisany.")
+
+                QMessageBox.information(
+                    self,
+                    "Sukces",
+                    f"Plik został zapisany pomyślnie w:\n{file_path}"
+                )
+            # Jeśli użytkownik kliknął "Anuluj", nic się nie dzieje.
+
         except Exception as e:
-            QMessageBox.critical(self, "Błąd", f"Błąd generowania: {e}")
+            # Jeśli wystąpi błąd, pokaż szczegóły
+            QMessageBox.critical(
+                self,
+                "Błąd generowania PDF",
+                f"Nie udało się wygenerować pliku PDF.\n\n"
+                f"Szczegóły błędu: {e}\n\n"
+                f"Upewnij się, że program 'wkhtmltopdf' jest zainstalowany i dostępny w systemie."
+            )
 
     def refresh_data(self):
         self._load_initial_data()
