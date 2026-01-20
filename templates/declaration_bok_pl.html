@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Deklaracja Zgodności - BOK</title>
+    <style>
+        body {
+            font-family: 'DejaVu Sans', Arial, sans-serif;
+            font-size: 11pt;
+            line-height: 1.4;
+            margin: 20px;
+        }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { text-decoration: underline; font-size: 14pt; }
+        .section { margin-bottom: 15px; }
+        .section-title { font-weight: bold; }
+        .producer-info { margin-left: 20px; font-weight: bold; }
+        .client-box {
+            border: 1px solid #000;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #f9f9f9;
+        }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt; }
+        table, th, td { border: 1px solid #000; }
+        th { background-color: #e0e0e0; padding: 8px; font-weight: bold; }
+        td { padding: 6px; }
+        .bold { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DEKLARACJA ZGODNOŚCI</h1>
+    </div>
+
+    <div class="section">
+        <div class="section-title">1. Nazwa produktu: {{ product.name }}</div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">2. Producent: {{ producer.name }}</div>
+        <div class="producer-info">
+            {{ producer.address_line1 }}<br>
+            {{ producer.address_line2 }}<br>
+            tel. {{ producer.phone }}, fax {{ producer.fax }}<br>
+            {{ producer.plant_name }}<br>
+            {{ producer.plant_address }}
+        </div>
+    </div>
+
+    {% if client %}
+    <div class="client-box">
+        <div><strong>KLIENT: {{ client.code }}</strong></div>
+        <div>{{ client.name }}</div>
+        <div>{{ client.address }}</div>
+        <div><em>Nr faktury: {{ client.invoice }}</em></div>
+    </div>
+
+    <div class="section">
+        <p><strong>WYRÓB:</strong></p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Kod produktu</th>
+                    <th>Nazwa produktu</th>
+                    <th>Data produkcji</th>
+                    <th>Ilość</th>
+                    <th>Nr partii</th>
+                    <th>Data ważności</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for batch in batches %}
+                <tr>
+                    <td>{{ batch.code }}</td>
+                    <td>{{ batch.name }}</td>
+                    <td>{{ batch.production_date }}</td>
+                    <td>{{ batch.quantity }}</td>
+                    <td>{{ batch.batch_number }}</td>
+                    <td>{{ batch.expiry_date }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <p>3. Firma {{ producer.name }} oświadcza, iż produkt spełnia wymagania wyrobów przeznaczonych do kontaktu z żywnością.</p>
+    </div>
+
+    <div class="section">
+        <p>6. Substancje podlegające ograniczeniom migracji specyficznej SML:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Nr ref.</th>
+                    <th>Nr CAS</th>
+                    <th>Nazwa substancji</th>
+                    <th>Limit SML [mg/kg]</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sub in substances_table %}
+                <tr>
+                    <td style="text-align: center;">{{ sub.nr_ref }}</td>
+                    <td style="text-align: center;">{{ sub.nr_cas }}</td>
+                    <td>{{ sub.name }}</td>
+                    <td style="text-align: center;">{{ sub.sml_limit }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <p>8. Substancje dual use: {{ dual_use_list|join(', ') }}</p>
+    </div>
+
+    <div class="section">
+        <p><strong>{{ texts.final_note }}</strong></p>
+    </div>
+
+    <div class="section" style="margin-top: 30px;">
+        <p>Ignatki, dn. {{ generation_date }}</p>
+        <p>{{ producer.name }}</p>
+        <p style="margin-top: 40px;">_______________________</p>
+        <p><em>Dyrektor ds. Rozwoju i Jakości</em></p>
+        <p><em>Bogusław Sztuk</em></p>
+    </div>
+</body>
+</html>

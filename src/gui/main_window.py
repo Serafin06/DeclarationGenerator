@@ -1,3 +1,5 @@
+# gui/main_window.py
+
 """
 MainWindow - Główne okno aplikacji z menu nawigacji
 """
@@ -7,6 +9,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from src.gui.tech_declaration_view import TechDeclarationView
+from src.gui.bok_declaration_view import BOKDeclarationView
 from src.gui.data_editor_view import DataEditorView
 from src.services.data_loader import DataLoader
 
@@ -51,9 +54,11 @@ class MainWindow(QMainWindow):
         # Stacked widget dla różnych widoków
         self.stacked_widget = QStackedWidget()
         self.tech_view = TechDeclarationView(self.data_loader)
+        self.bok_view = BOKDeclarationView(self.data_loader)
         self.data_editor_view = DataEditorView(self.data_loader)
 
         self.stacked_widget.addWidget(self.tech_view)
+        self.stacked_widget.addWidget(self.bok_view)
         self.stacked_widget.addWidget(self.data_editor_view)
 
         main_layout.addWidget(self.stacked_widget, stretch=1)
@@ -104,8 +109,12 @@ class MainWindow(QMainWindow):
         btn_tech.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
         layout.addWidget(btn_tech)
 
+        btn_bok = QPushButton("📋 Deklaracja BOK\n(z bazą danych)")
+        btn_bok.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(1))
+        layout.addWidget(btn_bok)
+
         btn_editor = QPushButton("⚙️ Edycja Danych\nWejściowych")
-        btn_editor.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(1))
+        btn_editor.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(2))
         layout.addWidget(btn_editor)
 
         # Spacer
@@ -137,6 +146,7 @@ class MainWindow(QMainWindow):
         try:
             self.data_loader.clear_cache()
             self.tech_view.refresh_data()
+            self.bok_view.refresh_data()
             self.data_editor_view.refresh_data()
             QMessageBox.information(
                 self,
