@@ -1,282 +1,257 @@
-"""
-DataEditorView - Interfejs do edycji plików JSON
-Idiotoodporny edytor z walidacją
-"""
+# src/gui/data_editor_view.py
+
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QComboBox, QTextEdit, QMessageBox,
-                             QGroupBox, QTableWidget, QTableWidgetItem,
-                             QHeaderView, QDialog, QFormLayout, QLineEdit,
-                             QDialogButtonBox)
+                             QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont, QColor
+import datetime
 import json
 from src.config.constants import (
-    SUBSTANCES_TABLE, DUAL_USE_TABLE, LAMINATE_STRUCTURES
+    SUBSTANCES_MASTER, DUAL_USE_MASTER, MATERIALS_DB,
+    TEXTS_PL, TEXTS_EN
 )
 
 
 class DataEditorView(QWidget):
-    """Widok edycji danych wejściowych"""
-
     def __init__(self, data_loader):
         super().__init__()
         self.data_loader = data_loader
-        self.current_file = None
-        self.current_data = None
+        self.master_substances = {}
+        self.master_dual_use = {}
+        self.materials_db = {}
+
         self._init_ui()
+        self._load_all_data_from_server()
 
     def _init_ui(self):
-        """Inicjalizuje interfejs"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
 
-        # Nagłówek
-        title = QLabel("Edycja Danych Wejściowych")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #2c3e50;")
-        layout.addWidget(title)
+        # 1. TYP DANYCH (Duży i na górze)
+        mode_layout = QVBoxLayout()
+        mode_label = QLabel("TYP EDYTOWANYCH DANYCH:")
+        mode_label.setStyleSheet("font-weight: bold; color: #2c3e50;")
+        self.combo_mode = QComboBox()
+        self.combo_mode.addItems(["Substancje SML", "Dual-Use", "Treść Deklaracji"])
+        self.combo_mode.setStyleSheet("font-size: 16px; font-weight: bold; padding: 8px; height: 40px;")
+        self.combo_mode.currentTextChanged.connect(self._on_mode_changed)
+        mode_layout.addWidget(mode_label)
+        mode_layout.addWidget(self.combo_mode)
+        layout.addLayout(mode_layout)
 
-        warning = QLabel("⚠️ Zmiany w tych danych wpływają na wszystkie generowane deklaracje!")
-        warning.setStyleSheet("color: #e74c3c; font-weight: bold;")
-        layout.addWidget(warning)
+        # 2. OSTRZEŻENIE O ZMIANACH GLOBALNYCH
+        self.warn_label = QLabel(
+            "⚠️ UWAGA: Zmiany w nazwach substancji zostaną wprowadzone we WSZYSTKICH deklaracjach korzystających z tej bazy.")
+        self.warn_label.setStyleSheet(
+            "color: #c0392b; font-weight: bold; background-color: #f9ebea; padding: 10px; border-radius: 5px;")
+        layout.addWidget(self.warn_label)
 
-        # Wybór pliku do edycji
-        file_group = self._create_file_selector()
-        layout.addWidget(file_group)
+        # 3. WYBÓR MATERIAŁU
+        context_layout = QHBoxLayout()
+        self.label_context = QLabel("Wybierz Materiał:")
+        self.label_context.setFont(QFont("Arial", 10, QFont.Bold))
+        self.combo_context = QComboBox()
+        self.combo_context.setMinimumWidth(200)
+        self.combo_context.currentTextChanged.connect(self._refresh_display)
 
-        # Tabela edycji
-        self.table_widget = QTableWidget()
-        self.table_widget.setEnabled(False)
-        layout.addWidget(self.table_widget)
-
-        # Przyciski akcji
-        buttons_layout = self._create_buttons()
-        layout.addLayout(buttons_layout)
-
-    def _create_file_selector(self) -> QGroupBox:
-        """Tworzy sekcję wyboru pliku"""
-        group = QGroupBox("Wybór pliku do edycji")
-        layout = QHBoxLayout()
-
-        layout.addWidget(QLabel("Plik:"))
-
-        self.file_combo = QComboBox()
-        self.file_combo.addItems([
-            "Tabela substancji (pkt 6)",
-            "Tabela dual use (pkt 8)",
-            "Struktury laminatów"
-        ])
-        self.file_combo.currentTextChanged.connect(self._load_file_data)
-        layout.addWidget(self.file_combo)
-
-        btn_load = QPushButton("Załaduj")
-        btn_load.clicked.connect(self._load_file_data)
-        layout.addWidget(btn_load)
-
-        layout.addStretch()
-
-        group.setLayout(layout)
-        return group
-
-    def _create_buttons(self) -> QHBoxLayout:
-        """Tworzy przyciski akcji"""
-        layout = QHBoxLayout()
-
-        btn_add = QPushButton("➕ Dodaj wiersz")
-        btn_add.clicked.connect(self._add_row)
-        layout.addWidget(btn_add)
-
-        btn_remove = QPushButton("➖ Usuń zaznaczony")
-        btn_remove.clicked.connect(self._remove_row)
-        layout.addWidget(btn_remove)
-
-        layout.addStretch()
-
-        btn_cancel = QPushButton("↩️ Anuluj zmiany")
-        btn_cancel.clicked.connect(self._load_file_data)
-        layout.addWidget(btn_cancel)
-
-        btn_save = QPushButton("💾 Zapisz")
-        btn_save.clicked.connect(self._save_data)
-        btn_save.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 10px 30px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-            }
+        btn_add_context = QPushButton("➕ DODAJ NOWY MATERIAŁ")
+        btn_add_context.setStyleSheet("""
+            QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px 15px; border-radius: 4px; }
+            QPushButton:hover { background-color: #2980b9; }
         """)
-        layout.addWidget(btn_save)
+        btn_add_context.clicked.connect(self._add_new_context)
 
-        return layout
+        context_layout.addWidget(self.label_context)
+        context_layout.addWidget(self.combo_context)
+        context_layout.addWidget(btn_add_context)
+        context_layout.addStretch()
+        layout.addLayout(context_layout)
 
-    def _get_current_file_path(self):
-        """Zwraca ścieżkę do aktualnie wybranego pliku"""
-        index = self.file_combo.currentIndex()
-        if index == 0:
-            return SUBSTANCES_TABLE
-        elif index == 1:
-            return DUAL_USE_TABLE
-        elif index == 2:
-            return LAMINATE_STRUCTURES
-        return None
+        # 4. TABELA (Skompresowana)
+        self.table = QTableWidget()
+        self.table.itemChanged.connect(self._on_cell_changed)
+        self.table.setAlternatingRowColors(True)
+        layout.addWidget(self.table)
 
-    def _load_file_data(self):
-        """Ładuje dane z wybranego pliku"""
+        # Edytor tekstowy (ukryty domyślnie)
+        self.text_editor = QTextEdit()
+        self.text_editor.hide()
+        layout.addWidget(self.text_editor)
+
+        # 5. PRZYCISKI DOLNE
+        actions = QHBoxLayout()
+        btn_add_row = QPushButton("➕ Dodaj wiersz")
+        btn_add_row.clicked.connect(lambda: self.table.insertRow(self.table.rowCount()))
+
+        btn_del_row = QPushButton("➖ Usuń wiersz")
+        btn_del_row.clicked.connect(lambda: self.table.removeRow(self.table.currentRow()))
+
+        btn_save = QPushButton("💾 ZAPISZ ZMIANY W BAZIE SIECIOWEJ")
+        btn_save.setStyleSheet("""
+            QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 12px 30px; font-size: 14px; }
+            QPushButton:hover { background-color: #219150; }
+        """)
+        btn_save.clicked.connect(self._save_data_to_server)
+
+        actions.addWidget(btn_add_row)
+        actions.addWidget(btn_del_row)
+        actions.addStretch()
+        actions.addWidget(btn_save)
+        layout.addLayout(actions)
+
+    def _load_all_data_from_server(self):
         try:
-            file_path = self._get_current_file_path()
-            if not file_path:
-                return
-
-            self.current_file = file_path
-            self.current_data = self.data_loader.reload(file_path)
-            self._populate_table()
-            self.table_widget.setEnabled(True)
+            self.master_substances = self.data_loader.load_json(SUBSTANCES_MASTER)
+            self.master_dual_use = self.data_loader.load_json(DUAL_USE_MASTER)
+            self.materials_db = self.data_loader.load_json(MATERIALS_DB)
+            self._on_mode_changed()
         except Exception as e:
-            QMessageBox.critical(self, "Błąd", f"Nie udało się załadować pliku:\n{e}")
+            QMessageBox.critical(self, "Błąd", f"Błąd ładowania: {e}")
 
-    def _populate_table(self):
-        """Wypełnia tabelę danymi"""
-        if not self.current_data:
-            return
+    def _on_mode_changed(self):
+        mode = self.combo_mode.currentText()
+        self.combo_context.clear()
 
-        index = self.file_combo.currentIndex()
+        if mode == "Treść Deklaracji":
+            self.label_context.setText("Język:")
+            self.combo_context.addItems(["PL", "EN"])
+            self.table.hide()
+            self.text_editor.show()
+            self.warn_label.hide()
+        else:
+            self.label_context.setText("Wybierz Materiał:")
+            self.combo_context.addItems(sorted(list(self.materials_db.keys())))
+            self.table.show()
+            self.text_editor.hide()
+            self.warn_label.show()
 
-        if index == 0:  # Substances table
-            self._populate_substances_table()
-        elif index == 1:  # Dual use table
-            self._populate_dual_use_table()
-        elif index == 2:  # Laminate structures
-            self._populate_structures_table()
+        self._refresh_display()
 
-    def _populate_substances_table(self):
-        """Wypełnia tabelę substancji"""
-        substances = self.current_data.get('substances', [])
+    def _refresh_display(self):
+        mode = self.combo_mode.currentText()
+        context = self.combo_context.currentText()
+        if not context: return
 
-        self.table_widget.setColumnCount(4)
-        self.table_widget.setHorizontalHeaderLabels([
-            "Nr ref.", "Nr CAS", "Nazwa substancji", "Limit SML [mg/kg]"
-        ])
-        self.table_widget.setRowCount(len(substances))
+        self.table.blockSignals(True)
+        self.table.setRowCount(0)
 
-        for i, sub in enumerate(substances):
-            self.table_widget.setItem(i, 0, QTableWidgetItem(sub.get('nr_ref', '')))
-            self.table_widget.setItem(i, 1, QTableWidgetItem(sub.get('nr_cas', '')))
-            self.table_widget.setItem(i, 2, QTableWidgetItem(sub.get('name', '')))
-            self.table_widget.setItem(i, 3, QTableWidgetItem(sub.get('sml_limit', '')))
+        if mode == "Substancje SML":
+            self.table.setColumnCount(7)
+            # Skompresowane pierwsze kolumny + Dostawca i Data
+            self.table.setHorizontalHeaderLabels(
+                ["Ref", "CAS", "Nazwa EN", "Nazwa PL", "Limit SML", "Dostawca", "Aktualizacja"])
+            mat_data = self.materials_db.get(context, {})
+            subs = mat_data.get('substances', [])
 
-        self.table_widget.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+            self.table.setRowCount(len(subs))
+            for i, item in enumerate(subs):
+                ref = str(item.get('ref', ''))
+                master = self.master_substances.get(ref, {})
 
-    def _populate_dual_use_table(self):
-        """Wypełnia tabelę dual use"""
-        items = self.current_data.get('items', [])
+                # Dane substancji
+                self.table.setItem(i, 0, QTableWidgetItem(ref))
+                self.table.setItem(i, 1, QTableWidgetItem(master.get('cas', '')))
+                self.table.setItem(i, 2, QTableWidgetItem(master.get('name_en', '')))
+                self.table.setItem(i, 3, QTableWidgetItem(master.get('name_pl', '')))
+                self.table.setItem(i, 4, QTableWidgetItem(item.get('sml', '')))
+                # Dane dostawcy (pobierane z nagłówka materiału)
+                self.table.setItem(i, 5, QTableWidgetItem(mat_data.get('supplier', '')))
+                self.table.setItem(i, 6, QTableWidgetItem(mat_data.get('last_updated', '')))
 
-        self.table_widget.setColumnCount(2)
-        self.table_widget.setHorizontalHeaderLabels(["Nazwa", "Kod E"])
-        self.table_widget.setRowCount(len(items))
+            # Szerokości kolumn
+            header = self.table.horizontalHeader()
+            header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Ref
+            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # CAS
+            header.setSectionResizeMode(2, QHeaderView.Stretch)  # EN
+            header.setSectionResizeMode(3, QHeaderView.Stretch)  # PL
+            header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # SML
+            header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Dostawca
+            header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Data
 
-        for i, item in enumerate(items):
-            self.table_widget.setItem(i, 0, QTableWidgetItem(item.get('name', '')))
-            self.table_widget.setItem(i, 1, QTableWidgetItem(item.get('e_code', '')))
+        elif mode == "Treść Deklaracji":
+            path = TEXTS_PL if context == "PL" else TEXTS_EN
+            data = self.data_loader.load_json(path)
+            self.text_editor.setPlainText(json.dumps(data, indent=2, ensure_ascii=False))
 
-        self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.blockSignals(False)
 
-    def _populate_structures_table(self):
-        """Wypełnia tabelę struktur laminatów"""
-        structures = self.current_data.get('structures', {})
+    def _on_cell_changed(self, item):
+        row, col = item.row(), item.column()
+        val = item.text().strip()
+        if not val or col > 3: return  # Tylko Ref, CAS, Nazwy EN/PL wyzwalają szukanie
 
-        self.table_widget.setColumnCount(3)
-        self.table_widget.setHorizontalHeaderLabels([
-            "Struktura", "Liczba substancji SML", "Liczba dual use"
-        ])
-        self.table_widget.setRowCount(len(structures))
+        self.table.blockSignals(True)
+        master_list = self.master_substances if self.combo_mode.currentText() == "Substancje SML" else self.master_dual_use
 
-        for i, (key, value) in enumerate(structures.items()):
-            self.table_widget.setItem(i, 0, QTableWidgetItem(key))
-            self.table_widget.setItem(i, 1, QTableWidgetItem(str(len(value.get('substances', [])))))
-            self.table_widget.setItem(i, 2, QTableWidgetItem(str(len(value.get('dual_use', [])))))
+        found_data = None
+        # Szukaj po wszystkim (Ref, CAS, Nazwy)
+        if val in master_list:
+            ref, found_data = val, master_list[val]
+        else:
+            for r, d in master_list.items():
+                if d.get('cas') == val or d.get('name_en') == val or d.get('name_pl') == val:
+                    ref, found_data = r, d
+                    break
 
-        self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        if found_data:
+            self.table.setItem(row, 0, QTableWidgetItem(ref))
+            self.table.setItem(row, 1, QTableWidgetItem(found_data.get('cas', '')))
+            self.table.setItem(row, 2, QTableWidgetItem(found_data.get('name_en', '')))
+            self.table.setItem(row, 3, QTableWidgetItem(found_data.get('name_pl', '')))
 
-    def _add_row(self):
-        """Dodaje nowy wiersz do tabeli"""
-        row_count = self.table_widget.rowCount()
-        self.table_widget.insertRow(row_count)
+        self.table.blockSignals(False)
 
-        # Wypełnij pustymi wartościami
-        for col in range(self.table_widget.columnCount()):
-            self.table_widget.setItem(row_count, col, QTableWidgetItem(""))
+    def _save_data_to_server(self):
+        mode = self.combo_mode.currentText()
+        context = self.combo_context.currentText()
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    def _remove_row(self):
-        """Usuwa zaznaczony wiersz"""
-        current_row = self.table_widget.currentRow()
-        if current_row >= 0:
-            confirm = QMessageBox.question(
-                self,
-                "Potwierdzenie",
-                "Czy na pewno usunąć ten wiersz?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if confirm == QMessageBox.Yes:
-                self.table_widget.removeRow(current_row)
-
-    def _save_data(self):
-        """Zapisuje dane do pliku JSON"""
         try:
-            # Odczytaj dane z tabeli
-            index = self.file_combo.currentIndex()
+            if mode == "Substancje SML":
+                new_subs = []
+                supplier_name = ""
 
-            if index == 0:  # Substances
-                updated_data = self._extract_substances_data()
-            elif index == 1:  # Dual use
-                updated_data = self._extract_dual_use_data()
-            elif index == 2:  # Structures
-                QMessageBox.warning(
-                    self,
-                    "Info",
-                    "Edycja struktur laminatów w zaawansowanej wersji.\n"
-                    "Na razie edytuj plik JSON bezpośrednio."
-                )
-                return
-            else:
-                return
+                for r in range(self.table.rowCount()):
+                    ref = self.table.item(r, 0).text() if self.table.item(r, 0) else ""
+                    if not ref: continue
 
-            # Zapisz do pliku
-            self.data_loader.save_json(self.current_file, updated_data)
+                    # 1. Aktualizuj Słownik Master (Globalny)
+                    self.master_substances[ref] = {
+                        "cas": self.table.item(r, 1).text() if self.table.item(r, 1) else "",
+                        "name_en": self.table.item(r, 2).text() if self.table.item(r, 2) else "",
+                        "name_pl": self.table.item(r, 3).text() if self.table.item(r, 3) else ""
+                    }
+                    # 2. Zbierz dane dla materiału
+                    new_subs.append({
+                        "ref": ref,
+                        "sml": self.table.item(r, 4).text() if self.table.item(r, 4) else "ND"
+                    })
+                    # 3. Pobierz nazwę dostawcy z ostatnio zmienionego wiersza (lub dowolnego)
+                    if self.table.item(r, 5): supplier_name = self.table.item(r, 5).text()
 
-            QMessageBox.information(
-                self,
-                "Sukces",
-                "Dane zostały zapisane na serwerze."
-            )
+                self.materials_db[context] = {
+                    "supplier": supplier_name,
+                    "last_updated": now,
+                    "substances": new_subs,
+                    "dual_use": self.materials_db.get(context, {}).get('dual_use', [])
+                }
+
+                self.data_loader.save_json(MATERIALS_DB, self.materials_db)
+                self.data_loader.save_json(SUBSTANCES_MASTER, self.master_substances)
+
+            QMessageBox.information(self, "Sukces", f"Zapisano pomyślnie. Data aktualizacji: {now}")
+            self._refresh_display()
+
         except Exception as e:
-            QMessageBox.critical(self, "Błąd", f"Nie udało się zapisać:\n{e}")
+            QMessageBox.critical(self, "Błąd", str(e))
 
-    def _extract_substances_data(self) -> dict:
-        """Wyciąga dane substancji z tabeli"""
-        substances = []
-        for row in range(self.table_widget.rowCount()):
-            substances.append({
-                'nr_ref': self.table_widget.item(row, 0).text() if self.table_widget.item(row, 0) else '',
-                'nr_cas': self.table_widget.item(row, 1).text() if self.table_widget.item(row, 1) else '',
-                'name': self.table_widget.item(row, 2).text() if self.table_widget.item(row, 2) else '',
-                'sml_limit': self.table_widget.item(row, 3).text() if self.table_widget.item(row, 3) else ''
-            })
-        return {'substances': substances}
-
-    def _extract_dual_use_data(self) -> dict:
-        """Wyciąga dane dual use z tabeli"""
-        items = []
-        for row in range(self.table_widget.rowCount()):
-            items.append({
-                'name': self.table_widget.item(row, 0).text() if self.table_widget.item(row, 0) else '',
-                'e_code': self.table_widget.item(row, 1).text() if self.table_widget.item(row, 1) else ''
-            })
-        return {'items': items}
-
-    def refresh_data(self):
-        """Odświeża dane"""
-        if self.current_file:
-            self._load_file_data()
+    def _add_new_context(self):
+        name, ok = QInputDialog.getText(self, "Nowy Materiał", "Podaj nazwę folii (np. OPA15):")
+        if ok and name:
+            name = name.upper()
+            if name not in self.materials_db:
+                self.materials_db[name] = {"supplier": "", "last_updated": "-", "substances": [], "dual_use": []}
+                self.combo_context.addItem(name)
+            self.combo_context.setCurrentText(name)

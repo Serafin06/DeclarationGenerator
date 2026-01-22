@@ -9,8 +9,7 @@ import json
 from pathlib import Path
 from typing import Dict, Optional
 from src.config.constants import (
-    TEXTS_PL, TEXTS_EN, SUBSTANCES_TABLE,
-    DUAL_USE_TABLE, LAMINATE_STRUCTURES, USE_NETWORK
+    TEXTS_PL, TEXTS_EN, USE_NETWORK
 )
 from src.services.network_service import NetworkService
 
@@ -91,18 +90,6 @@ class DataLoader:
         """Pobiera teksty dla języka"""
         file_path = TEXTS_PL if language == 'pl' else TEXTS_EN
         return self.load_json(file_path)
-
-    def get_substances_table(self) -> Dict:
-        """Pobiera dane tabeli substancji (pkt 6)"""
-        return self.load_json(SUBSTANCES_TABLE)
-
-    def get_dual_use_table(self) -> Dict:
-        """Pobiera dane tabeli dual use (pkt 8)"""
-        return self.load_json(DUAL_USE_TABLE)
-
-    def get_laminate_structures(self) -> Dict:
-        """Pobiera definicje struktur laminatów"""
-        return self.load_json(LAMINATE_STRUCTURES)
 
     def clear_cache(self):
         """Czyści cały cache - wymusza przeładowanie wszystkich plików"""
