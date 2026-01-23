@@ -8,8 +8,7 @@ from PyQt5.QtGui import QFont
 import datetime
 import re
 from src.config.constants import (
-    SUBSTANCES_MASTER, DUAL_USE_MASTER, MATERIALS_DB,
-    TEXTS_PL, TEXTS_EN
+    SUBSTANCES_MASTER, DUAL_USE_MASTER, MATERIALS_DB
 )
 
 
@@ -21,11 +20,11 @@ class DataEditorView(QWidget):
         self.master_dual_use = {}
         self.materials_db = {"materials": {}}
 
-        # Kolory
-        self.COLOR_ADD = "#2c3e50"
-        self.COLOR_DEL = "#d98880"
-        self.COLOR_SAVE = "#27ae60"
-        self.COLOR_WARN = "#e74c3c"
+        # Kolory (zgodnie z życzeniem - jednolite i stonowane)
+        self.COLOR_ADD = "#2c3e50"  # Ciemny granat
+        self.COLOR_DEL = "#d98880"  # Stonowana czerwień
+        self.COLOR_SAVE = "#27ae60"  # Zielony
+        self.COLOR_WARN = "#e74c3c"  # Ostrzegawczy
 
         self._init_ui()
         self._load_all_data()
@@ -35,7 +34,7 @@ class DataEditorView(QWidget):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        # 1. NAGŁÓWEK (Tryb edycji)
+        # 1. NAGŁÓWEK SYSTEMOWY
         header_container = QWidget()
         header_container.setStyleSheet(f"background-color: {self.COLOR_ADD}; border-radius: 5px;")
         header_layout = QHBoxLayout(header_container)
@@ -44,18 +43,15 @@ class DataEditorView(QWidget):
 
         self.combo_mode = QComboBox()
         self.combo_mode.addItems(["Substancje SML", "Surowce Dual-Use", "Treść Deklaracji"])
-        self.combo_mode.setStyleSheet("""
-            QComboBox { font-size: 16px; font-weight: bold; color: white; border: 1px solid white; 
-            padding: 5px; background: transparent; min-width: 300px; }
-            QComboBox QAbstractItemView { background-color: #34495e; color: white; }
-        """)
+        self.combo_mode.setStyleSheet(
+            "font-size: 16px; font-weight: bold; color: white; padding: 5px; background: transparent; min-width: 300px;")
         self.combo_mode.currentTextChanged.connect(self._on_mode_changed)
         header_layout.addWidget(header_title)
         header_layout.addWidget(self.combo_mode)
         header_layout.addStretch()
         layout.addWidget(header_container)
 
-        # 2. WYBÓR MATERIAŁU
+        # 2. WYBÓR FOLII I DOSTAWCY
         selection_layout = QHBoxLayout()
         btn_style_add = f"background-color: {self.COLOR_ADD}; color: white; font-weight: bold; padding: 8px 15px; border-radius: 4px;"
         btn_style_del = f"background-color: {self.COLOR_DEL}; color: white; font-weight: bold; padding: 8px 15px; border-radius: 4px;"
@@ -90,8 +86,8 @@ class DataEditorView(QWidget):
         selection_layout.addStretch()
         layout.addLayout(selection_layout)
 
-        # 3. OSTRZEŻENIE
-        self.warn_label = QLabel("⚠️ ZMIANY W NAZWACH LUB CAS SĄ GLOBALNE I WPŁYWAJĄ NA WSZYSTKIE DEKLARACJE!")
+        # 3. CZERWONE OSTRZEŻENIE
+        self.warn_label = QLabel("⚠️ UWAGA: ZMIANY W NAZWACH LUB CAS SĄ GLOBALNE DLA WSZYSTKICH PLIKÓW!")
         self.warn_label.setAlignment(Qt.AlignCenter)
         self.warn_label.setStyleSheet(
             f"background-color: {self.COLOR_WARN}; color: white; padding: 10px; font-weight: bold; border-radius: 4px;")
@@ -107,28 +103,22 @@ class DataEditorView(QWidget):
         self.text_editor.hide()
         layout.addWidget(self.text_editor)
 
-        # 5. STOPKA
+        # 5. STOPKA - DUŻE PRZYCISKI
         footer = QHBoxLayout()
-        btn_add_row = QPushButton("➕ DODAJ WIERSZ (SZUKAJ)")
+        btn_add_row = QPushButton("➕ DODAJ WIERSZ (WYSZUKAJ)")
         btn_add_row.setMinimumHeight(55);
-        btn_add_row.setMinimumWidth(300)
+        btn_add_row.setMinimumWidth(320)
         btn_add_row.setStyleSheet(btn_style_add + "font-size: 14px;")
         btn_add_row.clicked.connect(self._smart_add_row)
 
-        btn_del_row = QPushButton("➖ USUŃ WIERSZ")
-        btn_del_row.setMinimumHeight(55)
-        btn_del_row.setStyleSheet(btn_style_del)
-        btn_del_row.clicked.connect(lambda: self.table.removeRow(self.table.currentRow()))
-
-        self.btn_save = QPushButton("💾 ZAPISZ ZMIANY")
+        self.btn_save = QPushButton("💾 ZAPISZ ZMIANY W BAZIE")
         self.btn_save.setMinimumHeight(55);
-        self.btn_save.setMinimumWidth(300)
+        self.btn_save.setMinimumWidth(320)
         self.btn_save.setStyleSheet(
             f"background-color: {self.COLOR_SAVE}; color: white; font-weight: bold; font-size: 16px; border-radius: 4px;")
         self.btn_save.clicked.connect(self._save_all_data)
 
         footer.addWidget(btn_add_row)
-        footer.addWidget(btn_del_row)
         footer.addStretch()
         footer.addWidget(self.btn_save)
         layout.addLayout(footer)
@@ -143,13 +133,9 @@ class DataEditorView(QWidget):
     def _on_mode_changed(self):
         mode = self.combo_mode.currentText()
         if "Treść" in mode:
-            self.combo_material.hide();
-            self.combo_supplier.hide();
             self.table.hide();
             self.text_editor.show()
         else:
-            self.combo_material.show();
-            self.combo_supplier.show();
             self.table.show();
             self.text_editor.hide()
             self.combo_material.clear()
@@ -177,12 +163,13 @@ class DataEditorView(QWidget):
         mat_entry = self.materials_db["materials"][mat_name][supp_idx]
         is_sml = "Substancje" in mode
 
-        headers = ["Nr REF", "CAS", "NAZWA EN", "NAZWA PL", "WARTOŚĆ SML"] if is_sml else \
-            ["ID_INTERNAL", "CAS", "NAZWA EN", "NAZWA PL", "SYMBOL E"]
+        # Nagłówki: ID (techniczne) jest zawsze w kolumnie 0 (ukryte)
+        headers = ["ID", "CAS", "NAZWA EN", "NAZWA PL", "Nr REF", "WARTOŚĆ SML"] if is_sml else \
+            ["ID", "CAS", "NAZWA EN", "NAZWA PL", "SYMBOL E"]
 
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
-        if not is_sml: self.table.setColumnHidden(0, True)  # Ukrywamy techniczne ID w Dual-Use
+        self.table.setColumnHidden(0, True)  # Zawsze ukrywamy ID techniczne przed użytkownikiem
 
         items = mat_entry.get('sml' if is_sml else 'dualUse', [])
         for i, item in enumerate(items):
@@ -190,13 +177,23 @@ class DataEditorView(QWidget):
             s_id = str(item.get('substanceId') if is_sml else item)
             master = self.master_substances.get(s_id, {}) if is_sml else self.master_dual_use.get(s_id, {})
 
-            data = [s_id, master.get('cas', ''), master.get('name_en', ''), master.get('name_pl', ''),
-                    str(item.get('value', '')) if is_sml else master.get('e_symbol', '')]
+            # Przygotowanie wiersza
+            row_data = [
+                s_id,
+                master.get('cas', ''),
+                master.get('name_en', ''),
+                master.get('name_pl', ''),
+                master.get('ref_no', '') if is_sml else master.get('e_symbol', ''),
+                str(item.get('value', '')) if is_sml else ""
+            ]
+            if not is_sml: row_data = row_data[:5]  # Dual use ma 5 kolumn
 
-            for col, text in enumerate(data):
+            for col, text in enumerate(row_data):
                 t_item = QTableWidgetItem(text)
                 t_item.setTextAlignment(Qt.AlignCenter)
-                if col == 4: t_item.setFont(QFont("", -1, QFont.Bold))
+                # Pogrubienie ostatniej kolumny (SML lub Symbol E)
+                if (is_sml and col == 5) or (not is_sml and col == 4):
+                    t_item.setFont(QFont("", -1, QFont.Bold))
                 self.table.setItem(i, col, t_item)
 
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -205,65 +202,49 @@ class DataEditorView(QWidget):
     def _smart_add_row(self):
         is_sml = "Substancje" in self.combo_mode.currentText()
         prompt = "Wyszukaj (Nr REF, CAS lub Nazwa EN):" if is_sml else "Wyszukaj (Symbol E, CAS lub Nazwa EN):"
-
-        text, ok = QInputDialog.getText(self, "Dodaj nowy wiersz", prompt)
+        text, ok = QInputDialog.getText(self, "Dodaj wiersz", prompt)
         if not ok or not text: return
         text = text.strip()
 
         master = self.master_substances if is_sml else self.master_dual_use
-        found_key = None
+        found_id = None
 
-        # 1. Przeszukiwanie bazy Master
-        for key, data in master.items():
-            # Kryteria wspólne: CAS i Nazwa EN
-            if data.get('cas') == text or data.get('name_en', '').lower() == text.lower():
-                found_key = key
-                break
-            # Kryterium specyficzne dla SML: Nr REF (klucz)
-            if is_sml and key == text:
-                found_key = key
-                break
-            # Kryterium specyficzne dla Dual-Use: Symbol E
-            if not is_sml and data.get('e_symbol', '').lower() == text.lower():
-                found_key = key
+        # Szukamy w bazie Master
+        for mid, data in master.items():
+            if (data.get('cas') == text or
+                    data.get('name_en', '').lower() == text.lower() or
+                    data.get('ref_no', '') == text or
+                    data.get('e_symbol', '').lower() == text.lower()):
+                found_id = mid
                 break
 
         self.table.blockSignals(True)
         row = self.table.rowCount()
         self.table.insertRow(row)
 
-        if found_key:
-            # Wstawienie danych z bazy
-            d = master[found_key]
-            last_val = ""  # SML zostawiamy puste do wpisania, E-Symbol dociągamy z bazy
-            if not is_sml: last_val = d.get('e_symbol', '')
-
-            vals = [found_key, d.get('cas', ''), d.get('name_en', ''), d.get('name_pl', ''), last_val]
-            for c, v in enumerate(vals):
+        if found_id:
+            d = master[found_id]
+            vals = [found_id, d.get('cas', ''), d.get('name_en', ''), d.get('name_pl', ''),
+                    d.get('ref_no', '') if is_sml else d.get('e_symbol', ''), ""]
+            for c, v in enumerate(vals if is_sml else vals[:5]):
                 ti = QTableWidgetItem(str(v))
                 ti.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, c, ti)
         else:
-            # Jeśli NIE znaleziono - inteligentne przypisanie do kolumn
-            col_to_fill = 2  # Domyślnie Nazwa EN
+            # Nowa substancja - generujemy nowe ID techniczne
+            new_id = str(max([int(k) for k in master.keys()] + [0]) + 1)
 
-            if is_sml:
-                if re.match(r'^\d{5}$', text):
-                    col_to_fill = 0  # 5 cyfr to zazwyczaj Nr REF
-                elif "-" in text and any(char.isdigit() for char in text):
-                    col_to_fill = 1  # CAS
-            else:
-                # Logika dla Dual Use
-                if text.upper().startswith('E') and any(char.isdigit() for char in text):
-                    col_to_fill = 4  # Symbol E
-                elif "-" in text and any(char.isdigit() for char in text):
-                    col_to_fill = 1  # CAS
-                elif re.match(r'^\d+$', text):
-                    col_to_fill = 0  # Czysty numer jako ID wewnętrzne
+            # Inteligentne wstawienie wpisanego tekstu
+            col_to_fill = 2  # Nazwa EN
+            if "-" in text and any(c.isdigit() for c in text):
+                col_to_fill = 1  # CAS
+            elif is_sml and re.match(r'^\d{5}$', text):
+                col_to_fill = 4  # Nr REF
+            elif not is_sml and text.upper().startswith('E'):
+                col_to_fill = 4  # Symbol E
 
-            # Tworzymy pusty wiersz i wstawiamy wpisany tekst w wyliczoną kolumnę
-            for c in range(5):
-                val = text if c == col_to_fill else ""
+            for c in range(6 if is_sml else 5):
+                val = new_id if c == 0 else (text if c == col_to_fill else "")
                 ti = QTableWidgetItem(val)
                 ti.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, c, ti)
@@ -271,19 +252,9 @@ class DataEditorView(QWidget):
         self.table.blockSignals(False)
 
     def _on_cell_changed(self, item):
-        # Funkcja uzupełniająca po ręcznej edycji Nr REF / ID
-        if item.column() != 0: return
-        self.table.blockSignals(True)
-        val = item.text().strip()
-        is_sml = "Substancje" in self.combo_mode.currentText()
-        master = self.master_substances if is_sml else self.master_dual_use
-        if val in master:
-            d = master[val]
-            self.table.setItem(item.row(), 1, QTableWidgetItem(d.get('cas', '')))
-            self.table.setItem(item.row(), 2, QTableWidgetItem(d.get('name_en', '')))
-            self.table.setItem(item.row(), 3, QTableWidgetItem(d.get('name_pl', '')))
-            for c in range(1, 4): self.table.item(item.row(), c).setTextAlignment(Qt.AlignCenter)
-        self.table.blockSignals(False)
+        # Jeśli użytkownik ręcznie zmieni Nr REF lub Symbol E, nie robimy auto-uzupełniania po ID
+        # bo ID jest ukryte i stałe.
+        pass
 
     def _save_all_data(self):
         mat_name = self.combo_material.currentText()
@@ -292,35 +263,41 @@ class DataEditorView(QWidget):
 
         try:
             is_sml = "Substancje" in self.combo_mode.currentText()
-            new_list = []
-            for r in range(self.table.rowCount()):
-                rid = self.table.item(r, 0).text() if self.table.item(r, 0) else ""
-                if not rid: continue
+            new_items_list = []
 
-                m_data = {"cas": self.table.item(r, 1).text(), "name_en": self.table.item(r, 2).text(),
-                          "name_pl": self.table.item(r, 3).text()}
+            for r in range(self.table.rowCount()):
+                mid = self.table.item(r, 0).text()  # Techniczne ID
+                if not mid: continue
+
+                master_data = {
+                    "cas": self.table.item(r, 1).text(),
+                    "name_en": self.table.item(r, 2).text(),
+                    "name_pl": self.table.item(r, 3).text()
+                }
+
                 if is_sml:
-                    self.master_substances[rid] = m_data
-                    val = self.table.item(r, 4).text().replace(',', '.') if self.table.item(r, 4) else "0"
-                    new_list.append({"substanceId": int(rid), "value": float(val)})
+                    master_data["ref_no"] = self.table.item(r, 4).text()
+                    self.master_substances[mid] = master_data
+                    val = self.table.item(r, 5).text().replace(',', '.') if self.table.item(r, 5) else "0"
+                    new_items_list.append({"substanceId": int(mid), "value": float(val)})
                 else:
-                    m_data["e_symbol"] = self.table.item(r, 4).text()
-                    self.master_dual_use[rid] = m_data
-                    new_list.append(int(rid))
+                    master_data["e_symbol"] = self.table.item(r, 4).text()
+                    self.master_dual_use[mid] = master_data
+                    new_items_list.append(int(mid))
 
             target = self.materials_db["materials"][mat_name][supp_idx]
             target["lastUpdated"] = datetime.datetime.now().isoformat()
             if is_sml:
-                target["sml"] = new_list
+                target["sml"] = new_items_list
             else:
-                target["dualUse"] = new_list
+                target["dualUse"] = new_items_list
 
             self.data_loader.save_json(MATERIALS_DB, self.materials_db)
             self.data_loader.save_json(SUBSTANCES_MASTER, self.master_substances)
             self.data_loader.save_json(DUAL_USE_MASTER, self.master_dual_use)
-            QMessageBox.information(self, "OK", "Zapisano.")
+            QMessageBox.information(self, "OK", "Baza zaktualizowana pomyślnie.")
         except Exception as e:
-            QMessageBox.critical(self, "Błąd", str(e))
+            QMessageBox.critical(self, "Błąd", f"Szczegóły błędu: {e}")
 
     def _add_new_material(self):
         name, ok = QInputDialog.getText(self, "Nowa Folia", "Nazwa:")
