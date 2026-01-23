@@ -4,9 +4,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QComboBox, QTextEdit, QMessageBox,
                              QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtGui import QFont
 import datetime
-import json
 from src.config.constants import (
     SUBSTANCES_MASTER, DUAL_USE_MASTER, MATERIALS_DB,
     TEXTS_PL, TEXTS_EN
@@ -19,239 +18,294 @@ class DataEditorView(QWidget):
         self.data_loader = data_loader
         self.master_substances = {}
         self.master_dual_use = {}
-        self.materials_db = {}
+        self.materials_db = {"materials": {}}
+
+        # Style kolorystyczne
+        self.COLOR_ADD = "#2c3e50"  # Granatowy dla wszystkich "Dodaj"
+        self.COLOR_DEL = "#d98880"  # Przygaszona czerwień dla "Usuń"
+        self.COLOR_SAVE = "#27ae60"  # Zielony dla zapisu (zostawiam, bo to kluczowa akcja)
+        self.COLOR_WARN = "#e74c3c"  # Intensywny czerwony dla ostrzeżenia
 
         self._init_ui()
-        self._load_all_data_from_server()
+        self._load_all_data()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        # 1. TYP DANYCH (Duży i na górze)
-        mode_layout = QVBoxLayout()
-        mode_label = QLabel("TYP EDYTOWANYCH DANYCH:")
-        mode_label.setStyleSheet("font-weight: bold; color: #2c3e50;")
-        self.combo_mode = QComboBox()
-        self.combo_mode.addItems(["Substancje SML", "Dual-Use", "Treść Deklaracji"])
-        self.combo_mode.setStyleSheet("font-size: 16px; font-weight: bold; padding: 8px; height: 40px;")
-        self.combo_mode.currentTextChanged.connect(self._on_mode_changed)
-        mode_layout.addWidget(mode_label)
-        mode_layout.addWidget(self.combo_mode)
-        layout.addLayout(mode_layout)
+        # 1. NAGŁÓWEK (Tryb edycji)
+        header_container = QWidget()
+        header_container.setStyleSheet(f"background-color: {self.COLOR_ADD}; border-radius: 5px;")
+        header_layout = QHBoxLayout(header_container)
 
-        # 2. OSTRZEŻENIE O ZMIANACH GLOBALNYCH
-        self.warn_label = QLabel(
-            "⚠️ UWAGA: Zmiany w nazwach substancji zostaną wprowadzone we WSZYSTKICH deklaracjach korzystających z tej bazy.")
-        self.warn_label.setStyleSheet(
-            "color: #c0392b; font-weight: bold; background-color: #f9ebea; padding: 10px; border-radius: 5px;")
+        header_title = QLabel("TRYB EDYCJI:")
+        header_title.setStyleSheet("color: white; font-weight: bold; font-size: 14px; border: none;")
+
+        self.combo_mode = QComboBox()
+        self.combo_mode.addItems(["Substancje SML", "Surowce Dual-Use", "Treść Deklaracji"])
+        self.combo_mode.setStyleSheet("""
+            QComboBox { 
+                font-size: 16px; font-weight: bold; color: white; border: 1px solid white; 
+                padding: 5px; background: transparent; min-width: 300px;
+            }
+            QComboBox QAbstractItemView { background-color: #34495e; color: white; }
+        """)
+        self.combo_mode.currentTextChanged.connect(self._on_mode_changed)
+
+        header_layout.addWidget(header_title)
+        header_layout.addWidget(self.combo_mode)
+        header_layout.addStretch()
+        layout.addWidget(header_container)
+
+        # 2. WYBÓR MATERIAŁU I DOSTAWCY
+        selection_layout = QHBoxLayout()
+
+        self.combo_material = QComboBox()
+        self.combo_material.setMinimumWidth(150)
+        self.combo_material.currentTextChanged.connect(self._on_material_changed)
+
+        self.combo_supplier = QComboBox()
+        self.combo_supplier.setMinimumWidth(250)
+        self.combo_supplier.currentTextChanged.connect(self._refresh_display)
+
+        btn_style_add = f"background-color: {self.COLOR_ADD}; color: white; font-weight: bold; padding: 8px 15px; border-radius: 4px;"
+        btn_style_del = f"background-color: {self.COLOR_DEL}; color: white; font-weight: bold; padding: 8px 15px; border-radius: 4px;"
+
+        btn_add_mat = QPushButton("➕ NOWA FOLIA")
+        btn_add_mat.setStyleSheet(btn_style_add)
+        btn_add_mat.clicked.connect(self._add_new_material)
+
+        btn_add_supp = QPushButton("➕ DODAJ DOSTAWCĘ")
+        btn_add_supp.setStyleSheet(btn_style_add)
+        btn_add_supp.clicked.connect(self._add_new_supplier_entry)
+
+        btn_del_supp = QPushButton("🗑️ USUŃ DOSTAWCĘ")
+        btn_del_supp.setStyleSheet(btn_style_del)
+        btn_del_supp.clicked.connect(self._delete_current_supplier)
+
+        selection_layout.addWidget(QLabel("Folia:"))
+        selection_layout.addWidget(self.combo_material)
+        selection_layout.addWidget(btn_add_mat)
+        selection_layout.addWidget(QLabel("Dostawca:"))
+        selection_layout.addWidget(self.combo_supplier)
+        selection_layout.addWidget(btn_add_supp)
+        selection_layout.addWidget(btn_del_supp)
+        selection_layout.addStretch()
+        layout.addLayout(selection_layout)
+
+        # 3. OSTRZEŻENIE
+        self.warn_label = QLabel("⚠️ ZMIANY W NAZWACH LUB CAS SĄ GLOBALNE I WPŁYWAJĄ NA WSZYSTKIE DEKLARACJE!")
+        self.warn_label.setAlignment(Qt.AlignCenter)
+        self.warn_label.setStyleSheet(f"""
+            background-color: {self.COLOR_WARN}; color: white; padding: 10px; 
+            font-weight: bold; border-radius: 4px;
+        """)
         layout.addWidget(self.warn_label)
 
-        # 3. WYBÓR MATERIAŁU
-        context_layout = QHBoxLayout()
-        self.label_context = QLabel("Wybierz Materiał:")
-        self.label_context.setFont(QFont("Arial", 10, QFont.Bold))
-        self.combo_context = QComboBox()
-        self.combo_context.setMinimumWidth(200)
-        self.combo_context.currentTextChanged.connect(self._refresh_display)
-
-        btn_add_context = QPushButton("➕ DODAJ NOWY MATERIAŁ")
-        btn_add_context.setStyleSheet("""
-            QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px 15px; border-radius: 4px; }
-            QPushButton:hover { background-color: #2980b9; }
-        """)
-        btn_add_context.clicked.connect(self._add_new_context)
-
-        context_layout.addWidget(self.label_context)
-        context_layout.addWidget(self.combo_context)
-        context_layout.addWidget(btn_add_context)
-        context_layout.addStretch()
-        layout.addLayout(context_layout)
-
-        # 4. TABELA (Skompresowana)
+        # 4. TABELA
         self.table = QTableWidget()
         self.table.itemChanged.connect(self._on_cell_changed)
         self.table.setAlternatingRowColors(True)
+        self.table.setStyleSheet("QTableWidget { gridline-color: #dcdde1; }")
         layout.addWidget(self.table)
 
-        # Edytor tekstowy (ukryty domyślnie)
         self.text_editor = QTextEdit()
         self.text_editor.hide()
         layout.addWidget(self.text_editor)
 
-        # 5. PRZYCISKI DOLNE
-        actions = QHBoxLayout()
-        btn_add_row = QPushButton("➕ Dodaj wiersz")
+        # 5. STOPKA - PRZYCISKI AKCJI
+        footer = QHBoxLayout()
+
+        btn_add_row = QPushButton("➕ DODAJ NOWY WIERSZ")
+        btn_add_row.setMinimumHeight(55)
+        btn_add_row.setMinimumWidth(250)
+        btn_add_row.setStyleSheet(btn_style_add + "font-size: 14px;")
         btn_add_row.clicked.connect(lambda: self.table.insertRow(self.table.rowCount()))
 
-        btn_del_row = QPushButton("➖ Usuń wiersz")
+        btn_del_row = QPushButton("➖ USUŃ WIERSZ")
+        btn_del_row.setMinimumHeight(55)
+        btn_del_row.setStyleSheet(btn_style_del)
         btn_del_row.clicked.connect(lambda: self.table.removeRow(self.table.currentRow()))
 
-        btn_save = QPushButton("💾 ZAPISZ ZMIANY W BAZIE SIECIOWEJ")
-        btn_save.setStyleSheet("""
-            QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 12px 30px; font-size: 14px; }
-            QPushButton:hover { background-color: #219150; }
-        """)
-        btn_save.clicked.connect(self._save_data_to_server)
+        self.btn_save = QPushButton("💾 ZAPISZ ZMIANY W BAZIE")
+        self.btn_save.setMinimumHeight(55)
+        self.btn_save.setMinimumWidth(300)
+        self.btn_save.setStyleSheet(
+            f"background-color: {self.COLOR_SAVE}; color: white; font-weight: bold; font-size: 16px; border-radius: 4px;")
+        self.btn_save.clicked.connect(self._save_all_data)
 
-        actions.addWidget(btn_add_row)
-        actions.addWidget(btn_del_row)
-        actions.addStretch()
-        actions.addWidget(btn_save)
-        layout.addLayout(actions)
+        footer.addWidget(btn_add_row)
+        footer.addWidget(btn_del_row)
+        footer.addStretch()
+        footer.addWidget(self.btn_save)
+        layout.addLayout(footer)
 
-    def _load_all_data_from_server(self):
-        try:
-            self.master_substances = self.data_loader.load_json(SUBSTANCES_MASTER)
-            self.master_dual_use = self.data_loader.load_json(DUAL_USE_MASTER)
-            self.materials_db = self.data_loader.load_json(MATERIALS_DB)
-            self._on_mode_changed()
-        except Exception as e:
-            QMessageBox.critical(self, "Błąd", f"Błąd ładowania: {e}")
+    def _load_all_data(self):
+        self.master_substances = self.data_loader.load_json(SUBSTANCES_MASTER)
+        self.master_dual_use = self.data_loader.load_json(DUAL_USE_MASTER)
+        self.materials_db = self.data_loader.load_json(MATERIALS_DB)
+        if "materials" not in self.materials_db: self.materials_db["materials"] = {}
+        self._on_mode_changed()
 
     def _on_mode_changed(self):
         mode = self.combo_mode.currentText()
-        self.combo_context.clear()
-
-        if mode == "Treść Deklaracji":
-            self.label_context.setText("Język:")
-            self.combo_context.addItems(["PL", "EN"])
+        if "Treść" in mode:
+            self.combo_material.hide()
+            self.combo_supplier.hide()
             self.table.hide()
             self.text_editor.show()
-            self.warn_label.hide()
         else:
-            self.label_context.setText("Wybierz Materiał:")
-            self.combo_context.addItems(sorted(list(self.materials_db.keys())))
+            self.combo_material.show()
+            self.combo_supplier.show()
             self.table.show()
             self.text_editor.hide()
-            self.warn_label.show()
-
+            self.combo_material.clear()
+            self.combo_material.addItems(sorted(self.materials_db["materials"].keys()))
         self._refresh_display()
+
+    def _on_material_changed(self, mat_name):
+        self.combo_supplier.clear()
+        if mat_name in self.materials_db["materials"]:
+            entries = self.materials_db["materials"][mat_name]
+            for i, entry in enumerate(entries):
+                display = f"{entry.get('supplier', 'Dostawca')} ({entry.get('lastUpdated', '')[:10]})"
+                self.combo_supplier.addItem(display, i)
 
     def _refresh_display(self):
         mode = self.combo_mode.currentText()
-        context = self.combo_context.currentText()
-        if not context: return
+        mat_name = self.combo_material.currentText()
+        supp_idx = self.combo_supplier.currentData()
+
+        if "Treść" in mode or mat_name == "" or supp_idx is None:
+            self.table.setRowCount(0)
+            return
 
         self.table.blockSignals(True)
         self.table.setRowCount(0)
 
-        if mode == "Substancje SML":
-            self.table.setColumnCount(7)
-            # Skompresowane pierwsze kolumny + Dostawca i Data
-            self.table.setHorizontalHeaderLabels(
-                ["Ref", "CAS", "Nazwa EN", "Nazwa PL", "Limit SML", "Dostawca", "Aktualizacja"])
-            mat_data = self.materials_db.get(context, {})
-            subs = mat_data.get('substances', [])
+        mat_entry = self.materials_db["materials"][mat_name][supp_idx]
+        is_sml = "Substancje" in mode
 
-            self.table.setRowCount(len(subs))
-            for i, item in enumerate(subs):
-                ref = str(item.get('ref', ''))
-                master = self.master_substances.get(ref, {})
+        headers = ["ID", "CAS", "NAZWA EN", "NAZWA PL", "WARTOŚĆ SML" if is_sml else "SYMBOL E"]
+        self.table.setColumnCount(len(headers))
+        self.table.setHorizontalHeaderLabels(headers)
 
-                # Dane substancji
-                self.table.setItem(i, 0, QTableWidgetItem(ref))
-                self.table.setItem(i, 1, QTableWidgetItem(master.get('cas', '')))
-                self.table.setItem(i, 2, QTableWidgetItem(master.get('name_en', '')))
-                self.table.setItem(i, 3, QTableWidgetItem(master.get('name_pl', '')))
-                self.table.setItem(i, 4, QTableWidgetItem(item.get('sml', '')))
-                # Dane dostawcy (pobierane z nagłówka materiału)
-                self.table.setItem(i, 5, QTableWidgetItem(mat_data.get('supplier', '')))
-                self.table.setItem(i, 6, QTableWidgetItem(mat_data.get('last_updated', '')))
+        items = mat_entry.get('sml' if is_sml else 'dualUse', [])
+        bold_font = QFont();
+        bold_font.setBold(True)
 
-            # Szerokości kolumn
-            header = self.table.horizontalHeader()
-            header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Ref
-            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # CAS
-            header.setSectionResizeMode(2, QHeaderView.Stretch)  # EN
-            header.setSectionResizeMode(3, QHeaderView.Stretch)  # PL
-            header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # SML
-            header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Dostawca
-            header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Data
+        for i, item in enumerate(items):
+            self.table.insertRow(i)
+            s_id = str(item.get('substanceId') if is_sml else item)
+            master = self.master_substances.get(s_id, {}) if is_sml else self.master_dual_use.get(s_id, {})
 
-        elif mode == "Treść Deklaracji":
-            path = TEXTS_PL if context == "PL" else TEXTS_EN
-            data = self.data_loader.load_json(path)
-            self.text_editor.setPlainText(json.dumps(data, indent=2, ensure_ascii=False))
+            cells = [
+                s_id,
+                master.get('cas', ''),
+                master.get('name_en', ''),  # EN pierwsze
+                master.get('name_pl', ''),  # PL drugie
+                str(item.get('value', '')) if is_sml else master.get('e_symbol', '')
+            ]
 
+            for col, text in enumerate(cells):
+                table_item = QTableWidgetItem(text)
+                table_item.setTextAlignment(Qt.AlignCenter)
+                if col == 4: table_item.setFont(bold_font)  # SML pogrubione
+                self.table.setItem(i, col, table_item)
+
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.blockSignals(False)
 
     def _on_cell_changed(self, item):
-        row, col = item.row(), item.column()
-        val = item.text().strip()
-        if not val or col > 3: return  # Tylko Ref, CAS, Nazwy EN/PL wyzwalają szukanie
-
+        if item.column() != 0: return
         self.table.blockSignals(True)
-        master_list = self.master_substances if self.combo_mode.currentText() == "Substancje SML" else self.master_dual_use
+        val = item.text().strip()
+        is_sml = "Substancje" in self.combo_mode.currentText()
+        master = self.master_substances if is_sml else self.master_dual_use
 
-        found_data = None
-        # Szukaj po wszystkim (Ref, CAS, Nazwy)
-        if val in master_list:
-            ref, found_data = val, master_list[val]
-        else:
-            for r, d in master_list.items():
-                if d.get('cas') == val or d.get('name_en') == val or d.get('name_pl') == val:
-                    ref, found_data = r, d
-                    break
+        if val in master:
+            d = master[val]
+            self.table.setItem(item.row(), 1, QTableWidgetItem(d.get('cas', '')))
+            self.table.setItem(item.row(), 2, QTableWidgetItem(d.get('name_en', '')))
+            self.table.setItem(item.row(), 3, QTableWidgetItem(d.get('name_pl', '')))
+            if not is_sml: self.table.setItem(item.row(), 4, QTableWidgetItem(d.get('e_symbol', '')))
 
-        if found_data:
-            self.table.setItem(row, 0, QTableWidgetItem(ref))
-            self.table.setItem(row, 1, QTableWidgetItem(found_data.get('cas', '')))
-            self.table.setItem(row, 2, QTableWidgetItem(found_data.get('name_en', '')))
-            self.table.setItem(row, 3, QTableWidgetItem(found_data.get('name_pl', '')))
-
+            for col in range(1, 5):
+                if self.table.item(item.row(), col):
+                    self.table.item(item.row(), col).setTextAlignment(Qt.AlignCenter)
         self.table.blockSignals(False)
 
-    def _save_data_to_server(self):
+    def _delete_current_supplier(self):
+        mat_name = self.combo_material.currentText()
+        supp_idx = self.combo_supplier.currentData()
+        if supp_idx is None: return
+
+        if QMessageBox.question(self, "Usuń", f"Usunąć dostawcę z {mat_name}?") == QMessageBox.Yes:
+            self.materials_db["materials"][mat_name].pop(supp_idx)
+            self.data_loader.save_json(MATERIALS_DB, self.materials_db)
+            self._on_material_changed(mat_name)
+
+    def _save_all_data(self):
         mode = self.combo_mode.currentText()
-        context = self.combo_context.currentText()
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        mat_name = self.combo_material.currentText()
+        supp_idx = self.combo_supplier.currentData()
+        if mat_name == "" or supp_idx is None: return
 
         try:
-            if mode == "Substancje SML":
-                new_subs = []
-                supplier_name = ""
+            is_sml = "Substancje" in mode
+            new_list = []
+            for r in range(self.table.rowCount()):
+                row_id = self.table.item(r, 0).text() if self.table.item(r, 0) else ""
+                if not row_id: continue
 
-                for r in range(self.table.rowCount()):
-                    ref = self.table.item(r, 0).text() if self.table.item(r, 0) else ""
-                    if not ref: continue
-
-                    # 1. Aktualizuj Słownik Master (Globalny)
-                    self.master_substances[ref] = {
-                        "cas": self.table.item(r, 1).text() if self.table.item(r, 1) else "",
-                        "name_en": self.table.item(r, 2).text() if self.table.item(r, 2) else "",
-                        "name_pl": self.table.item(r, 3).text() if self.table.item(r, 3) else ""
-                    }
-                    # 2. Zbierz dane dla materiału
-                    new_subs.append({
-                        "ref": ref,
-                        "sml": self.table.item(r, 4).text() if self.table.item(r, 4) else "ND"
-                    })
-                    # 3. Pobierz nazwę dostawcy z ostatnio zmienionego wiersza (lub dowolnego)
-                    if self.table.item(r, 5): supplier_name = self.table.item(r, 5).text()
-
-                self.materials_db[context] = {
-                    "supplier": supplier_name,
-                    "last_updated": now,
-                    "substances": new_subs,
-                    "dual_use": self.materials_db.get(context, {}).get('dual_use', [])
+                master_data = {
+                    "cas": self.table.item(r, 1).text() if self.table.item(r, 1) else "",
+                    "name_en": self.table.item(r, 2).text() if self.table.item(r, 2) else "",
+                    "name_pl": self.table.item(r, 3).text() if self.table.item(r, 3) else ""
                 }
 
-                self.data_loader.save_json(MATERIALS_DB, self.materials_db)
-                self.data_loader.save_json(SUBSTANCES_MASTER, self.master_substances)
+                if is_sml:
+                    self.master_substances[row_id] = master_data
+                    val = self.table.item(r, 4).text() if self.table.item(r, 4) else "0"
+                    new_list.append({"substanceId": int(row_id), "value": float(val.replace(',', '.'))})
+                else:
+                    master_data["e_symbol"] = self.table.item(r, 4).text() if self.table.item(r, 4) else ""
+                    self.master_dual_use[row_id] = master_data
+                    new_list.append(int(row_id))
 
-            QMessageBox.information(self, "Sukces", f"Zapisano pomyślnie. Data aktualizacji: {now}")
-            self._refresh_display()
+            target = self.materials_db["materials"][mat_name][supp_idx]
+            target["lastUpdated"] = datetime.datetime.now().isoformat()
+            if is_sml:
+                target["sml"] = new_list
+            else:
+                target["dualUse"] = new_list
 
+            self.data_loader.save_json(MATERIALS_DB, self.materials_db)
+            self.data_loader.save_json(SUBSTANCES_MASTER, self.master_substances)
+            self.data_loader.save_json(DUAL_USE_MASTER, self.master_dual_use)
+            QMessageBox.information(self, "OK", "Baza zaktualizowana.")
+            self._on_material_changed(mat_name)
         except Exception as e:
             QMessageBox.critical(self, "Błąd", str(e))
 
-    def _add_new_context(self):
-        name, ok = QInputDialog.getText(self, "Nowy Materiał", "Podaj nazwę folii (np. OPA15):")
+    def _add_new_material(self):
+        name, ok = QInputDialog.getText(self, "Nowa Folia", "Nazwa:")
         if ok and name:
             name = name.upper()
-            if name not in self.materials_db:
-                self.materials_db[name] = {"supplier": "", "last_updated": "-", "substances": [], "dual_use": []}
-                self.combo_context.addItem(name)
-            self.combo_context.setCurrentText(name)
+            if name not in self.materials_db["materials"]:
+                self.materials_db["materials"][name] = []
+                self.combo_material.addItem(name)
+            self.combo_material.setCurrentText(name)
+
+    def _add_new_supplier_entry(self):
+        mat_name = self.combo_material.currentText()
+        if not mat_name: return
+        supp, ok = QInputDialog.getText(self, "Nowy Dostawca", f"Nazwa dostawcy dla {mat_name}:")
+        if ok and supp:
+            self.materials_db["materials"][mat_name].append({
+                "supplier": supp, "lastUpdated": datetime.datetime.now().isoformat(),
+                "sml": [], "dualUse": []
+            })
+            self._on_material_changed(mat_name)
+            self.combo_supplier.setCurrentIndex(self.combo_supplier.count() - 1)
