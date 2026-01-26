@@ -111,6 +111,12 @@ class DataEditorView(QWidget):
         btn_add_row.setStyleSheet(btn_style_add + "font-size: 14px;")
         btn_add_row.clicked.connect(self._smart_add_row)
 
+        btn_del_row = QPushButton("🗑️ USUŃ WIERSZ")
+        btn_del_row.setMinimumHeight(55)
+        btn_del_row.setMinimumWidth(200)
+        btn_del_row.setStyleSheet(btn_style_del + "font-size: 14px;")
+        btn_del_row.clicked.connect(self._delete_selected_row)
+
         self.btn_save = QPushButton("💾 ZAPISZ ZMIANY W BAZIE")
         self.btn_save.setMinimumHeight(55);
         self.btn_save.setMinimumWidth(320)
@@ -119,6 +125,7 @@ class DataEditorView(QWidget):
         self.btn_save.clicked.connect(self._save_all_data)
 
         footer.addWidget(btn_add_row)
+        footer.addWidget(btn_del_row)
         footer.addStretch()
         footer.addWidget(self.btn_save)
         layout.addLayout(footer)
@@ -265,9 +272,13 @@ class DataEditorView(QWidget):
             is_sml = "Substancje" in self.combo_mode.currentText()
             new_items_list = []
 
+            is_sml = "Substancje" in self.combo_mode.currentText()
+            new_items_dict = {}  # Używamydict do automatycznej deduplikacji po ID
+
             for r in range(self.table.rowCount()):
-                mid = self.table.item(r, 0).text()  # Techniczne ID
-                if not mid: continue
+                mid = self.table.item(r, 0).text()
+                if not mid:
+                    continue
 
                 master_data = {
                     "cas": self.table.item(r, 1).text(),
@@ -279,14 +290,18 @@ class DataEditorView(QWidget):
                     master_data["ref_no"] = self.table.item(r, 4).text()
                     self.master_substances[mid] = master_data
                     val = self.table.item(r, 5).text().replace(',', '.') if self.table.item(r, 5) else "0"
-                    new_items_list.append({"substanceId": int(mid), "value": float(val)})
+                    new_items_dict[mid] = {"substanceId": int(mid), "value": float(val)}
                 else:
                     master_data["e_symbol"] = self.table.item(r, 4).text()
                     self.master_dual_use[mid] = master_data
-                    new_items_list.append(int(mid))
+                    new_items_dict[mid] = int(mid)
+
+            # Konwersja dict na listę (pozostawiamy tylko unikalne wpisy)
+            new_items_list = list(new_items_dict.values())
 
             target = self.materials_db["materials"][mat_name][supp_idx]
             target["lastUpdated"] = datetime.datetime.now().isoformat()
+
             if is_sml:
                 target["sml"] = new_items_list
             else:
@@ -325,3 +340,18 @@ class DataEditorView(QWidget):
             self.materials_db["materials"][mat].pop(idx)
             self.data_loader.save_json(MATERIALS_DB, self.materials_db)
             self._on_material_changed(mat)
+
+    def _delete_selected_row(self):
+        """Usuwa zaznaczony wiersz z tabeli"""
+        current_row = self.table.currentRow()
+        if current_row >= 0:
+            reply = QMessageBox.question(
+                self,
+                "Usuń wiersz",
+                f"Usunąć wiersz {current_row + 1}?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self.table.removeRow(current_row)
+        else:
+            QMessageBox.warning(self, "Brak zaznaczenia", "Zaznacz wiersz do usunięcia")
