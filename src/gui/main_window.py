@@ -11,6 +11,7 @@ from PyQt5.QtGui import QFont
 from src.gui.tech_declaration_view import TechDeclarationView
 from src.gui.bok_declaration_view import BOKDeclarationView
 from src.gui.data_editor_view import DataEditorView
+from src.gui.text_editor_view import TextEditorView
 from src.services.data_loader import DataLoader
 
 
@@ -80,10 +81,12 @@ class MainWindow(QMainWindow):
         self.tech_view = TechDeclarationView(self.data_loader)
         self.bok_view = BOKDeclarationView(self.data_loader)
         self.data_editor_view = DataEditorView(self.data_loader)
+        self.text_editor_view = TextEditorView(self.data_loader)
 
         self.stacked_widget.addWidget(self.tech_view)
         self.stacked_widget.addWidget(self.bok_view)
         self.stacked_widget.addWidget(self.data_editor_view)
+        self.stacked_widget.addWidget(self.text_editor_view)
 
         main_layout.addWidget(self.stacked_widget, stretch=1)
 
@@ -140,6 +143,10 @@ class MainWindow(QMainWindow):
         btn_editor = QPushButton("⚙️ Edycja Danych\nWejściowych")
         btn_editor.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(2))
         layout.addWidget(btn_editor)
+
+        btn_text_editor = QPushButton("📝 Edycja Tekstów\nDeklaracji")
+        btn_text_editor.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(3))
+        layout.addWidget(btn_text_editor)
 
         # Spacer
         layout.addStretch()
@@ -206,6 +213,7 @@ class MainWindow(QMainWindow):
             self.tech_view.refresh_data()
             self.bok_view.refresh_data()
             self.data_editor_view.refresh_data()
+            self.text_editor_view.refresh_data()
             QMessageBox.information(
                 self,
                 "Sukces",

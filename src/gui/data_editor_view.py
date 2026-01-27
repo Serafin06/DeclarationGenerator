@@ -42,7 +42,7 @@ class DataEditorView(QWidget):
         header_title.setStyleSheet("color: white; font-weight: bold; font-size: 14px; border: none;")
 
         self.combo_mode = QComboBox()
-        self.combo_mode.addItems(["Substancje SML", "Surowce Dual-Use", "Treść Deklaracji"])
+        self.combo_mode.addItems(["Substancje SML", "Surowce Dual-Use"])
         self.combo_mode.setStyleSheet(
             "font-size: 16px; font-weight: bold; color: white; padding: 5px; background: transparent; min-width: 300px;")
         self.combo_mode.currentTextChanged.connect(self._on_mode_changed)
@@ -99,10 +99,6 @@ class DataEditorView(QWidget):
         self.table.setAlternatingRowColors(True)
         layout.addWidget(self.table)
 
-        self.text_editor = QTextEdit()
-        self.text_editor.hide()
-        layout.addWidget(self.text_editor)
-
         # 5. STOPKA - DUŻE PRZYCISKI
         footer = QHBoxLayout()
         btn_add_row = QPushButton("➕ DODAJ WIERSZ (WYSZUKAJ)")
@@ -139,14 +135,8 @@ class DataEditorView(QWidget):
 
     def _on_mode_changed(self):
         mode = self.combo_mode.currentText()
-        if "Treść" in mode:
-            self.table.hide();
-            self.text_editor.show()
-        else:
-            self.table.show();
-            self.text_editor.hide()
-            self.combo_material.clear()
-            self.combo_material.addItems(sorted(self.materials_db["materials"].keys()))
+        self.combo_material.clear()
+        self.combo_material.addItems(sorted(self.materials_db["materials"].keys()))
         self._refresh_display()
 
     def _on_material_changed(self, mat_name):
@@ -161,7 +151,7 @@ class DataEditorView(QWidget):
         mat_name = self.combo_material.currentText()
         supp_idx = self.combo_supplier.currentData()
 
-        if "Treść" in mode or mat_name == "" or supp_idx is None:
+        if mat_name == "" or supp_idx is None:
             self.table.setRowCount(0);
             return
 
