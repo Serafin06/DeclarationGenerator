@@ -95,6 +95,93 @@ class DataLoader:
         """Czyści cały cache - wymusza przeładowanie wszystkich plików"""
         self._cache.clear()
 
+    # Dodaj na końcu klasy DataLoader, przed get_network_status():
+
+    def get_materials_list(self) -> list:
+        """Zwraca listę dostępnych materiałów"""
+        from src.config.constants import MATERIALS_DB
+        materials_db = self.load_json(MATERIALS_DB)
+        return sorted(materials_db.get('materials', {}).keys())
+
+    def get_material_data(self, material_name: str, supplier_index: int = 0) -> Optional[Dict]:
+        """
+        Pobiera dane materiału dla konkretnego dostawcy.
+        supplier_index=0 -> pierwszy dostawca (domyślnie)
+        """
+        from src.config.constants import MATERIALS_DB
+        materials_db = self.load_json(MATERIALS_DB)
+
+        material_entries = materials_db.get('materials', {}).get(material_name, [])
+        if not material_entries or supplier_index >= len(material_entries):
+            return None
+
+        return material_entries[supplier_index]
+
+    def build_structure_data(self, mat1: str, mat2: str) -> Dict:
+        """
+        Buduje dane struktury z dwóch materiałów (na bieżąco).
+        Łączy SML i Dual Use z deduplikacją po ID.
+
+        Returns: {
+            'substances': [...],  # dla tabeli SML
+            'dual_use': [...]     # lista ID dual use
+        }
+        """
+        from src.config.constants import SUBSTANCES_MASTER, DUAL_USE_MASTER
+
+        # Pobierz dane obu materiałów (pierwszy dostawca)
+        mat1_data = self.get_material_data(mat1, 0)
+        mat2_data = self.get_material_data(mat2, 0)
+
+        if not mat1_data or not mat2_data:
+            return {'substances': [], 'dual_use': []}
+
+        # Master JSONy
+        substances_master = self.load_json(SUBSTANCES_MASTER)
+        dual_use_master = self.load_json(DUAL_USE_MASTER)
+
+        # === SML - deduplikacja z sumowaniem wartości ===
+        sml_dict = {}  # {substanceId: total_value}
+
+        for item in mat1_data.get('sml', []) + mat2_data.get('sml', []):
+            sid = item['substanceId']
+            val = item.get('value', 0)
+            sml_dict[sid] = sml_dict.get(sid, 0) + val
+
+        # Buduj listę substancji dla tabeli
+        substances_list = []
+        for sid, total_val in sml_dict.items():
+            sid_str = str(sid)
+            master_data = substances_master.get(sid_str, {})
+
+            substances_list.append({
+                'ref_no': master_data.get('ref_no', ''),
+                'cas': master_data.get('cas', ''),
+                'name_en': master_data.get('name_en', ''),
+                'name_pl': master_data.get('name_pl', ''),
+                'sml_value': total_val
+            })
+
+        # === Dual Use - deduplikacja po ID ===
+        dual_use_ids = set(mat1_data.get('dualUse', []) + mat2_data.get('dualUse', []))
+
+        dual_use_list = []
+        for did in dual_use_ids:
+            did_str = str(did)
+            master_data = dual_use_master.get(did_str, {})
+
+            dual_use_list.append({
+                'e_symbol': master_data.get('e_symbol', ''),
+                'cas': master_data.get('cas', ''),
+                'name_en': master_data.get('name_en', ''),
+                'name_pl': master_data.get('name_pl', '')
+            })
+
+        return {
+            'substances': substances_list,
+            'dual_use': dual_use_list
+        }
+
     def get_network_status(self) -> Optional[dict]:
         """Zwraca status połączenia sieciowego"""
         if self.network_service:

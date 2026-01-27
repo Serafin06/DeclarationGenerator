@@ -174,16 +174,18 @@ class TechDeclarationView(QWidget):
         return layout
 
     def _load_initial_data(self):
-        """Ładuje materiały (PET, OPA, PE, PP) i dane struktur"""
+        """Ładuje listę materiałów"""
         try:
-            structures = self.data_loader.get_laminate_structures()
-            materials = structures.get('materials', ["PET", "OPA", "PE", "PP"])
+            materials = self.data_loader.get_materials_list()
 
             self.combo_material1.clear()
             self.combo_material2.clear()
             self.combo_material1.addItems(materials)
             self.combo_material2.addItems(materials)
 
+            # Ustaw domyślne wartości
+            if "PET" in materials:
+                self.combo_material1.setCurrentText("PET")
             if "PE" in materials:
                 self.combo_material2.setCurrentText("PE")
 
@@ -197,48 +199,35 @@ class TechDeclarationView(QWidget):
         weryfikuje dane struktury w bazie danych.
         """
         try:
-            # Pobranie wybranych materiałów
             mat1 = self.combo_material1.currentText()
             mat2 = self.combo_material2.currentText()
 
             if not mat1 or not mat2:
                 return
 
-            # Składanie struktury (np. PET/PE)
+            # Składanie struktury
             structure = f"{mat1}/{mat2}"
             self.label_structure.setText(structure)
 
-            # 1. Automatyczne generowanie pełnej nazwy dla pkt 1
+            # Automatyczne generowanie nazwy
             lang = 'pl' if self.radio_pl.isChecked() else 'en'
-            prefix = self.product_prefixes.get(lang, self.product_prefixes.get('pl'))
-
-            # TUTAJ BYŁ BŁĄD - Usuwamy i zostawiamy sam string:
+            prefix = self.product_prefixes.get(lang, self.product_prefixes['pl'])
             full_name = f"{prefix} {structure}"
             self.input_product_name.setText(full_name)
 
-            # 2. Pobieranie danych SML i Dual Use z bazy JSON
-            structures_data = self.data_loader.get_laminate_structures()
-            # Zabezpieczenie przed brakiem danych
-            if not structures_data:
-                self.preview_text.setPlainText("Błąd: Nie można załadować bazy struktur.")
-                return
+            # Pobierz dane struktury (budowane dynamicznie)
+            structure_data = self.data_loader.build_structure_data(mat1, mat2)
 
-            structure_info = structures_data.get('structures', {}).get(structure)
+            substances_count = len(structure_data.get('substances', []))
+            dual_use_count = len(structure_data.get('dual_use', []))
 
-            if structure_info:
-                substances = structure_info.get('substances', [])
-                dual_use = structure_info.get('dual_use', [])
-
-                # TUTAJ BYŁ BŁĄD - Usuwamy:
-                preview = f"✅ Struktura rozpoznana: {structure}\n"
-                preview += f"Liczba substancji SML (tabela pkt 3): {len(substances)}\n"
-                preview += f"Substancje Dual Use (pkt 4): {len(dual_use)}"
-                self.preview_text.setPlainText(preview)
-            else:
-                self.preview_text.setPlainText(f"⚠️ Struktura {structure} nie widnieje w bazie. Tabele będą puste.")
+            preview = f"✅ Struktura zbudowana: {structure}\n"
+            preview += f"Liczba substancji SML (tabela pkt 3): {substances_count}\n"
+            preview += f"Substancje Dual Use (pkt 4): {dual_use_count}"
+            self.preview_text.setPlainText(preview)
 
         except Exception as e:
-            print(f"Błąd podczas aktualizacji podglądu: {e}")
+            self.preview_text.setPlainText(f"⚠️ Błąd budowania struktury: {e}")
 
     def _validate_input(self) -> bool:
         """Waliduje dane przed generowaniem"""
@@ -260,13 +249,16 @@ class TechDeclarationView(QWidget):
             structure=self.label_structure.text()
         )
 
-        # Dane tabelaryczne
+        # Dane tabelaryczne - budowane dynamicznie
         try:
-            structures = self.data_loader.get_laminate_structures()
-            structure_data = structures.get('structures', {}).get(declaration.product.structure, {})
+            mat1 = self.combo_material1.currentText()
+            mat2 = self.combo_material2.currentText()
+            structure_data = self.data_loader.build_structure_data(mat1, mat2)
+
             declaration.substances_table = structure_data.get('substances', [])
             declaration.dual_use_list = structure_data.get('dual_use', [])
-        except:
+        except Exception as e:
+            print(f"Błąd ładowania danych struktury: {e}")
             declaration.substances_table = []
             declaration.dual_use_list = []
 

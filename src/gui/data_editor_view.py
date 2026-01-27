@@ -355,3 +355,7 @@ class DataEditorView(QWidget):
                 self.table.removeRow(current_row)
         else:
             QMessageBox.warning(self, "Brak zaznaczenia", "Zaznacz wiersz do usunięcia")
+
+    def refresh_data(self):
+        """Odświeża dane z serwera"""
+        self._load_all_data()
