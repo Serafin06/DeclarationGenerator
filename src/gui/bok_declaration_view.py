@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QMessageBox, QRadioButton, QButtonGroup,
                              QFormLayout, QTableWidget, QTableWidgetItem,
                              QHeaderView, QFileDialog, QDateEdit, QTextEdit, QCheckBox)
-from PyQt5.QtCore import QDate
+from PyQt5.QtCore import QDate, Qt  # Dodano Qt do obsługi klawisza Enter
 from datetime import date, timedelta
 
 from src.config.constants import MATERIALS_DB
@@ -121,6 +121,8 @@ class BOKDeclarationView(QWidget):
         search_layout = QHBoxLayout()
         self.input_zo = QLineEdit();
         self.input_zo.setPlaceholderText("Nr zlecenia...")
+        # ZMIANA 1: Dodanie obsługi klawisza Enter
+        self.input_zo.returnPressed.connect(self._search_order)
         btn_fetch = QPushButton("🔍 Pobierz");
         btn_fetch.clicked.connect(self._search_order)
         search_layout.addWidget(self.input_zo);
@@ -168,6 +170,13 @@ class BOKDeclarationView(QWidget):
         # Przyciski Akcji
         layout.addLayout(self._create_action_buttons())
 
+    def _clean_address(self, address):
+        """Usuwa zbędne spacje z adresu"""
+        if not address:
+            return address
+        # Zamień wiele spacji na jedną i usuń spacje na początku i końcu
+        return ' '.join(address.split())
+
     def _search_order(self):
         """Pobiera dane z bazy i uzupełnia pola"""
         zo = self.input_zo.text().strip()
@@ -186,7 +195,8 @@ class BOKDeclarationView(QWidget):
         if not self.products:
             self.input_client_id.setText(str(data['client_number']))
             self.input_client_name.setText(data['client_name'])
-            self.input_client_addr.setText(data['client_address'])
+            # ZMIANA 2: Czyszczenie adresu z nadmiarowych spacji
+            self.input_client_addr.setText(self._clean_address(data['client_address']))
 
             db_struct = data.get('product_structure', '')
             if db_struct and "/" in db_struct:
@@ -307,7 +317,7 @@ class BOKDeclarationView(QWidget):
         self._update_products_table()
         self.input_client_name.clear();
         self.input_client_id.clear();
-        self.input_client_addr.clear()
+        self.input_client_addr.clear();
 
     def _create_declaration(self) -> Declaration:
         """Zbiera wszystkie dane z GUI do jednego obiektu modelu"""
@@ -443,10 +453,15 @@ class BOKDeclarationView(QWidget):
             if dialog.exec_() == QDialog.Accepted and dialog.selected_client_id:
                 client_data = clients_dict[dialog.selected_client_id]
                 self.input_client_id.setText(str(dialog.selected_client_id))
-                self.input_client_name.setText(client_data['client_name'])
-                self.input_client_addr.setText(client_data['client_address'])
+                # Zabezpieczamy się również tutaj na wypadek, gdyby dane w słowniku były None
+                self.input_client_name.setText(client_data.get('client_name') or '')
+                self.input_client_addr.setText(self._clean_address(client_data.get('client_address') or ''))
 
         except Exception as e:
+            # W razie dalszych problemów, dodajemy pełny ślad błędu do konsoli
+            import traceback
+            print("Błąd w wyszukiwaniu klienta:")
+            traceback.print_exc()
             QMessageBox.critical(self, "Błąd", f"Błąd wyszukiwania klienta:\n{e}")
 
     def _validate_input(self):

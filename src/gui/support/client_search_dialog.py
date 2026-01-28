@@ -27,8 +27,16 @@ class ClientSearchDialog(QDialog):
         self.list_widget.clear()
         search_text = self.search_bar.text().lower()
         for c_id, data in self.clients.items():
-            if search_text in data['client_name'].lower():
-                item = QListWidgetItem(f"{data['client_name']} (ID: {c_id})")
+            # --- KLUCZOWA POPRAWKA ---
+            # Używamy 'or ''', aby zapewnić, że client_name nigdy nie będzie None,
+            # nawet jeśli wartość w bazie danych to NULL.
+            client_name = data.get('client_name') or ''
+
+            # Sprawdzamy, czy tekst wyszukiwania znajduje się w nazwie klienta
+            if search_text in client_name.lower():
+                # Dla lepszej czytelności, jeśli nazwa jest pusta, wyświetlamy "Brak nazwy"
+                display_name = client_name if client_name else 'Brak nazwy'
+                item = QListWidgetItem(f"{display_name} (ID: {c_id})")
                 item.setData(32, c_id)  # Zapisujemy ukryte ID
                 self.list_widget.addItem(item)
 
