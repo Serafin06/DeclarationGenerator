@@ -5,8 +5,7 @@
 # === NAZWY TABEL ===
 TABLE_NAMES = {
     'orders': 'ZO',  # Zamówienia - dane produktu
-    # TODO: Dodaj nazwę tabeli kontrahentów
-    'clients': 'NAZWA_TABELI_KONTRAHENTOW',  # Kontrahenci
+    'clients': 'View_Kontrahent',  # Kontrahenci
 }
 
 # === KOLUMNY TABEL ===
@@ -16,14 +15,15 @@ ZO_COLUMNS = {
     'client_article_index': 'ART',
     'article_description': 'OPIS1',
     'product_structure': 'RECEPTURA_1',
-    # TODO: Dodaj kolumny dla daty produkcji i ilości
-    # 'production_date': 'NAZWA_KOLUMNY_DATA',
-    # 'quantity': 'NAZWA_KOLUMNY_ILOSC',
+    'production_date': 'TERMIN_ZAK',  # PLANOWANA Data produkcji
+    'client_number': 'ID_KONTRAHENTA',
 }
 
-# TODO: Uzupełnij kolumny tabeli kontrahentów
 CLIENT_COLUMNS = {
-    'client_number': 'NUMER_KONTRAHENTA',  # Numer kontrahenta
-    'client_name': 'NAZWA',  # Nazwa firmy
-    'client_address': 'ADRES',  # Adres (lub osobne kolumny)
+    'client_number': 'ID_KONTRAHENTA',  # Numer kontrahenta
+    'client_name': 'NAZWA_PELNA',  # Nazwa firmy
+    'ulica': 'ULICA_LOKAL',
+    'kod_pocztowy': 'KOD_POCZTOWY',
+    'miasto': 'MIEJSCOWOSC',
+    'clients':'NAZWA'
 }

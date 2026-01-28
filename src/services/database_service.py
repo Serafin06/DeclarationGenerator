@@ -16,11 +16,20 @@ class DatabaseService:
     def __init__(self):
         self.engine = getEngine()
 
+    def testConnection(self):
+        """Testuje połączenie z bazą danych, wykonując proste zapytanie."""
+        engine = self.engine
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT 1"))
+                print("✅ Połączono z bazą danych! Wynik testu:", result.scalar())
+                return True
+        except Exception as e:
+            print("❌ Błąd połączenia:")
+            print(e)
+            return False
+
     def get_order_data(self, order_number: str) -> Optional[Dict]:
-        """
-        Pobiera dane zlecenia z tabeli ZO po numerze zlecenia
-        Zwraca: dane produktu, klienta, daty produkcji
-        """
         try:
             query = text(f"""
                 SELECT 
@@ -32,7 +41,9 @@ class DatabaseService:
                     zo.{ZO_COLUMNS['production_date']} as production_date,
                     zo.{ZO_COLUMNS['client_number']} as client_number,
                     k.{CLIENT_COLUMNS['client_name']} as client_name,
-                    k.{CLIENT_COLUMNS['client_address']} as client_address
+                    k.{CLIENT_COLUMNS['ulica']} as street,
+                    k.{CLIENT_COLUMNS['kod_pocztowy']} as zip_code,
+                    k.{CLIENT_COLUMNS['miasto']} as city
                 FROM {TABLE_NAMES['orders']} zo
                 LEFT JOIN {TABLE_NAMES['clients']} k 
                     ON zo.{ZO_COLUMNS['client_number']} = k.{CLIENT_COLUMNS['client_number']}
@@ -43,6 +54,9 @@ class DatabaseService:
                 result = conn.execute(query, {"order_number": order_number}).fetchone()
 
                 if result:
+                    # Składanie adresu w jeden czytelny string
+                    full_address = f"{result.street}, {result.zip_code} {result.city}"
+
                     return {
                         'order_number': result.order_number,
                         'article_index': result.article_index,
@@ -50,59 +64,39 @@ class DatabaseService:
                         'article_description': result.article_description,
                         'product_structure': result.product_structure,
                         'production_date': result.production_date,
-                        'batch_number': result.order_number,  # Nr partii = Nr zlecenia
+                        'batch_number': result.order_number,
                         'client_number': result.client_number,
                         'client_name': result.client_name,
-                        'client_address': result.client_address,
-                        'quantity': None,  # TODO: będzie liczone z bazy lub ręcznie
+                        'client_address': full_address,
                     }
                 return None
-
         except Exception as e:
-            print(f"Błąd pobierania zlecenia: {e}")
+            print(f"❌ Database Error: {e}")
             raise
 
-    def get_client_data(self, client_number: str) -> Optional[Dict]:
-        """
-        Pobiera dane kontrahenta z tabeli kontrahentów
-
-        Args:
-            client_number: Numer kontrahenta
-
-        Returns:
-            Dict z danymi kontrahenta lub None jeśli nie znaleziono
-        """
-        # TODO: Uzupełnij gdy będzie znana nazwa tabeli i kolumny
+    def getAllClients(self) -> Dict[str, Dict]:
+        """Pobiera listę wszystkich kontrahentów do wyszukiwarki"""
         try:
             query = text(f"""
                 SELECT 
-                    {CLIENT_COLUMNS['client_number']} as client_number,
-                    {CLIENT_COLUMNS['client_name']} as client_name,
-                    {CLIENT_COLUMNS['client_address']} as client_address
+                    {CLIENT_COLUMNS['client_number']} as id,
+                    {CLIENT_COLUMNS['client_name']} as name,
+                    {CLIENT_COLUMNS['ulica']} as street,
+                    {CLIENT_COLUMNS['kod_pocztowy']} as zip,
+                    {CLIENT_COLUMNS['miasto']} as city
                 FROM {TABLE_NAMES['clients']}
-                WHERE {CLIENT_COLUMNS['client_number']} = :client_number
+                ORDER BY {CLIENT_COLUMNS['client_name']} ASC
             """)
 
+            clients = {}
             with self.engine.connect() as conn:
-                result = conn.execute(query, {"client_number": client_number}).fetchone()
-
-                if result:
-                    return {
-                        'client_number': result.client_number,
-                        'client_name': result.client_name,
-                        'client_address': result.client_address,
+                result = conn.execute(query)
+                for row in result:
+                    clients[str(row.id)] = {
+                        'client_name': row.name,
+                        'client_address': f"{row.street}, {row.zip} {row.city}"
                     }
-                return None
-
+            return clients
         except Exception as e:
-            print(f"Błąd pobierania kontrahenta: {e}")
-            raise
-
-    def test_connection(self) -> bool:
-        """Testuje połączenie z bazą"""
-        try:
-            with self.engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            return True
-        except:
-            return False
+            print(f"Błąd pobierania listy kontrahentów: {e}")
+            return {}
