@@ -55,7 +55,7 @@ class BOKDeclarationView(QWidget):
         lang_group = self._create_language_section()
         layout.addWidget(lang_group)
 
-        # Dane klienta
+        # Dane klienta (automatycznie z zlecenia) - ZMIENIONA KOLEJNOŚĆ
         client_group = self._create_client_section()
         layout.addWidget(client_group)
 
@@ -94,19 +94,15 @@ class BOKDeclarationView(QWidget):
         return group
 
     def _create_client_section(self) -> QGroupBox:
-        """Sekcja danych klienta"""
-        group = QGroupBox("Dane klienta")
+        """Sekcja danych klienta - automatycznie wypełniana z zlecenia"""
+        group = QGroupBox("Dane klienta (automatycznie z zlecenia)")
         layout = QFormLayout()
 
-        # Numer klienta + przycisk wyszukaj
-        client_layout = QHBoxLayout()
+        # Numer klienta (tylko do odczytu, z bazy)
         self.input_client_number = QLineEdit()
-        self.input_client_number.setPlaceholderText("Numer kontrahenta")
-        btn_search_client = QPushButton("🔍 Wyszukaj")
-        btn_search_client.clicked.connect(self._search_client)
-        client_layout.addWidget(self.input_client_number)
-        client_layout.addWidget(btn_search_client)
-        layout.addRow("Numer klienta:", client_layout)
+        self.input_client_number.setReadOnly(True)
+        self.input_client_number.setStyleSheet("background-color: #f0f0f0;")
+        layout.addRow("Numer klienta:", self.input_client_number)
 
         # Nazwa klienta (edytowalne)
         self.input_client_name = QLineEdit()
@@ -234,26 +230,8 @@ class BOKDeclarationView(QWidget):
 
         return layout
 
-    def _search_client(self):
-        """Wyszukuje dane klienta w bazie"""
-        client_number = self.input_client_number.text().strip()
-        if not client_number:
-            QMessageBox.warning(self, "Błąd", "Wprowadź numer klienta.")
-            return
-
-        try:
-            client_data = self.db_service.get_client_data(client_number)
-            if client_data:
-                self.input_client_name.setText(client_data['client_name'])
-                self.input_client_address.setText(client_data['client_address'])
-                QMessageBox.information(self, "Sukces", "Dane klienta załadowane z bazy.")
-            else:
-                QMessageBox.warning(self, "Nie znaleziono", "Brak klienta o tym numerze w bazie.")
-        except Exception as e:
-            QMessageBox.critical(self, "Błąd", f"Błąd pobierania danych klienta:\n{e}")
-
     def _search_order(self):
-        """Wyszukuje dane zlecenia w bazie"""
+        """Wyszukuje dane zlecenia w bazie i uzupełnia WSZYSTKIE pola"""
         order_number = self.input_order_number.text().strip()
         if not order_number:
             QMessageBox.warning(self, "Błąd", "Wprowadź numer zlecenia.")
@@ -262,17 +240,41 @@ class BOKDeclarationView(QWidget):
         try:
             order_data = self.db_service.get_order_data(order_number)
             if order_data:
+                # === DANE KLIENTA (automatycznie z zlecenia) ===
+                self.input_client_number.setText(order_data.get('client_number', ''))
+                self.input_client_name.setText(order_data.get('client_name', ''))
+                self.input_client_address.setText(order_data.get('client_address', ''))
+
+                # === DANE PRODUKTU ===
                 self.input_product_code.setText(order_data['article_index'])
                 self.input_product_name.setText(order_data['article_description'])
                 self.input_batch_number.setText(order_data['batch_number'])
 
-                # TODO: Uzupełnij gdy będą dostępne dane
-                # if order_data['production_date']:
-                #     self.input_production_date.setDate(order_data['production_date'])
-                # if order_data['quantity']:
-                #     self.input_quantity.setText(order_data['quantity'])
+                # === DATA PRODUKCJI (z bazy, edytowalna) ===
+                if order_data.get('production_date'):
+                    prod_date = order_data['production_date']
+                    # Jeśli to string, konwertuj
+                    if isinstance(prod_date, str):
+                        from datetime import datetime
+                        prod_date = datetime.strptime(prod_date, '%Y-%m-%d').date()
+                    self.input_production_date.setDate(QDate(prod_date))
 
-                QMessageBox.information(self, "Sukces", "Dane zlecenia załadowane z bazy.")
+                # === STRUKTURA (do późniejszego użycia) ===
+                self.current_product_structure = order_data.get('product_structure', '')
+
+                # === ILOŚĆ - ręcznie, ale można policzyć z bazy (TODO) ===
+                if order_data.get('quantity'):
+                    self.input_quantity.setText(str(order_data['quantity']))
+
+                QMessageBox.information(
+                    self,
+                    "Sukces",
+                    f"✅ Dane zlecenia załadowane:\n\n"
+                    f"Klient: {order_data.get('client_name', 'brak')}\n"
+                    f"Produkt: {order_data['article_description']}\n"
+                    f"Struktura: {self.current_product_structure}\n"
+                    f"Nr partii: {order_data['batch_number']}"
+                )
             else:
                 QMessageBox.warning(self, "Nie znaleziono", "Brak zlecenia o tym numerze w bazie.")
         except Exception as e:

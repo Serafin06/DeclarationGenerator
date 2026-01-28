@@ -19,26 +19,24 @@ class DatabaseService:
     def get_order_data(self, order_number: str) -> Optional[Dict]:
         """
         Pobiera dane zlecenia z tabeli ZO po numerze zlecenia
-
-        Args:
-            order_number: Numer zlecenia
-
-        Returns:
-            Dict z danymi zlecenia lub None jeśli nie znaleziono
+        Zwraca: dane produktu, klienta, daty produkcji
         """
         try:
             query = text(f"""
                 SELECT 
-                    {ZO_COLUMNS['order_number']} as order_number,
-                    {ZO_COLUMNS['article_index']} as article_index,
-                    {ZO_COLUMNS['client_article_index']} as client_article_index,
-                    {ZO_COLUMNS['article_description']} as article_description,
-                    {ZO_COLUMNS['product_structure']} as product_structure
-                    -- TODO: Dodaj kolumny daty produkcji i ilości
-                    -- {ZO_COLUMNS['production_date']} as production_date,
-                    -- {ZO_COLUMNS['quantity']} as quantity
-                FROM {TABLE_NAMES['orders']}
-                WHERE {ZO_COLUMNS['order_number']} = :order_number
+                    zo.{ZO_COLUMNS['order_number']} as order_number,
+                    zo.{ZO_COLUMNS['article_index']} as article_index,
+                    zo.{ZO_COLUMNS['client_article_index']} as client_article_index,
+                    zo.{ZO_COLUMNS['article_description']} as article_description,
+                    zo.{ZO_COLUMNS['product_structure']} as product_structure,
+                    zo.{ZO_COLUMNS['production_date']} as production_date,
+                    zo.{ZO_COLUMNS['client_number']} as client_number,
+                    k.{CLIENT_COLUMNS['client_name']} as client_name,
+                    k.{CLIENT_COLUMNS['client_address']} as client_address
+                FROM {TABLE_NAMES['orders']} zo
+                LEFT JOIN {TABLE_NAMES['clients']} k 
+                    ON zo.{ZO_COLUMNS['client_number']} = k.{CLIENT_COLUMNS['client_number']}
+                WHERE zo.{ZO_COLUMNS['order_number']} = :order_number
             """)
 
             with self.engine.connect() as conn:
@@ -51,10 +49,12 @@ class DatabaseService:
                         'client_article_index': result.client_article_index,
                         'article_description': result.article_description,
                         'product_structure': result.product_structure,
-                        # TODO: Uzupełnij gdy będą dostępne kolumny
-                        'production_date': None,  # result.production_date
-                        'quantity': None,  # result.quantity
-                        'batch_number': order_number,  # Nr partii = Nr zlecenia
+                        'production_date': result.production_date,
+                        'batch_number': result.order_number,  # Nr partii = Nr zlecenia
+                        'client_number': result.client_number,
+                        'client_name': result.client_name,
+                        'client_address': result.client_address,
+                        'quantity': None,  # TODO: będzie liczone z bazy lub ręcznie
                     }
                 return None
 
