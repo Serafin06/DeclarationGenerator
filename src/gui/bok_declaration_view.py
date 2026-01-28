@@ -324,22 +324,25 @@ class BOKDeclarationView(QWidget):
             invoice_number=self.input_invoice.text().strip()
         )
 
-        # 2. Dane o strukturze laminatu (z Twoich ComboBoxów)
+        # 2. Struktura laminatu
         m1 = self.combo_mat1.currentText()
         m2 = self.combo_mat2.currentText()
         structure_str = f"{m1}/{m2}"
 
-        # Pobieramy pełne dane o substancjach dla tej struktury
+        # Pobierz dane o substancjach
         structure_details = self.data_loader.build_structure_data(m1, m2)
 
+        # POPRAWKA - Product ma tylko name i structure
         declaration.product = Product(
             name=self.input_art_desc.text().strip() or "Laminat",
-            structure=structure_str,
-            substances=structure_details.get('substances', []),
-            dual_use=structure_details.get('dual_use', [])
+            structure=structure_str
         )
 
-        # 3. Lista wszystkich dodanych partii z tabeli
+        # Substancje i dual use są OSOBNYMI polami w Declaration
+        declaration.substances_table = structure_details.get('substances', [])
+        declaration.dual_use_list = structure_details.get('dual_use', [])
+
+        # 3. Lista partii
         declaration.batches = self.products.copy()
 
         return declaration
@@ -363,20 +366,64 @@ class BOKDeclarationView(QWidget):
             QMessageBox.critical(self, "Błąd PDF", f"Szczegóły: {str(e)}")
 
     def _generate_docx(self):
-        """Generuje DOCX używając Twojej metody w PDFGenerator"""
-        if not self._validate_input(): return
+        """Generuje DOCX z możliwością wyboru lokalizacji zapisu"""
+        if not self._validate_input():
+            return
 
         try:
             decl = self._create_declaration()
-            # Twoja metoda generate_docx zapisuje plik w OUTPUT_PATH
-            output_path = self.pdf_generator.generate_docx(decl)
 
-            QMessageBox.information(self, "Sukces", f"Plik DOCX został wygenerowany w:\n{output_path}")
+            # Przygotuj domyślną nazwę pliku
+            safe_name = "".join(c for c in decl.client.client_name if c.isalnum() or c in (' ', '-')).rstrip()
+            default_filename = f"Deklaracja_BOK_{safe_name}.docx"
 
-            # Opcjonalnie: otwórz folder z plikiem
-            import os
-            os.startfile(output_path.parent)
+            # Dialog wyboru ścieżki
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Zapisz deklarację DOCX",
+                default_filename,
+                "Pliki Word (*.docx)"
+            )
+
+            if not file_path:
+                return  # Użytkownik anulował
+
+            # Generuj HTML
+            html_content = self.pdf_generator.generate_html_content(decl)
+
+            # Konwertuj na DOCX
+            from bs4 import BeautifulSoup
+            from docx import Document
+            from docx.shared import Inches
+
+            soup = BeautifulSoup(html_content, 'html.parser')
+            doc = Document()
+
+            # Ustaw marginesy
+            for section in doc.sections:
+                section.top_margin = Inches(0.59)
+                section.bottom_margin = Inches(0.59)
+                section.left_margin = Inches(0.59)
+                section.right_margin = Inches(0.59)
+
+            # Przetwórz HTML
+            body = soup.find('body')
+            if body:
+                self.pdf_generator._process_html_to_docx(doc, body)
+
+            # Zapisz w wybranej lokalizacji
+            doc.save(file_path)
+
+            QMessageBox.information(
+                self,
+                "Sukces",
+                f"Plik DOCX został zapisany:\n{file_path}"
+            )
+
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"❌ Błąd DOCX:\n{error_details}")
             QMessageBox.critical(self, "Błąd DOCX", f"Szczegóły: {str(e)}")
 
     def _search_client_dialog(self):
@@ -401,3 +448,19 @@ class BOKDeclarationView(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Błąd wyszukiwania klienta:\n{e}")
+
+    def _validate_input(self):
+        """Sprawdza czy wszystkie wymagane dane są uzupełnione"""
+        if not self.input_client_name.text().strip():
+            QMessageBox.warning(self, "Błąd", "Wypełnij dane klienta.")
+            return False
+
+        if not self.input_invoice.text().strip():
+            QMessageBox.warning(self, "Błąd", "Wpisz numer faktury.")
+            return False
+
+        if not self.products:
+            QMessageBox.warning(self, "Błąd", "Dodaj przynajmniej jeden produkt.")
+            return False
+
+        return True
