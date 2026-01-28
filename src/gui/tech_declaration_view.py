@@ -154,9 +154,9 @@ class TechDeclarationView(QWidget):
         btn_preview.setStyleSheet("padding: 10px 20px; font-size: 14px;")
         layout.addWidget(btn_preview)
 
-        btn_generate = QPushButton("📄 Generuj PDF")
-        btn_generate.clicked.connect(self._generate_pdf)
-        btn_generate.setStyleSheet("""
+        btn_generate_pdf = QPushButton("📄 Generuj PDF")
+        btn_generate_pdf.clicked.connect(self._generate_pdf)
+        btn_generate_pdf.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60;
                 color: white;
@@ -169,7 +169,24 @@ class TechDeclarationView(QWidget):
                 background-color: #219150;
             }
         """)
-        layout.addWidget(btn_generate)
+        layout.addWidget(btn_generate_pdf)
+
+        btn_generate_docx = QPushButton("📝 Generuj DOCX")
+        btn_generate_docx.clicked.connect(self._generate_docx)
+        btn_generate_docx.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 10px 30px;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        layout.addWidget(btn_generate_docx)
 
         return layout
 
@@ -280,43 +297,97 @@ class TechDeclarationView(QWidget):
             return
 
         try:
-            # 1. Stwórz obiekt deklaracji na podstawie danych z formularza
             declaration = self._create_declaration()
-
-            # 2. Wygeneruj PDF jako dane w pamięci
             pdf_data = self.pdf_generator.generate_pdf_bytes(declaration)
 
-            # 3. Przygotuj domyślną nazwę pliku i otwórz okno "Zapisz jako"
             safe_product_name = "".join(c for c in declaration.product.name if c.isalnum() or c in (' ', '-')).rstrip()
             default_filename = f"Deklaracja_{safe_product_name.replace(' ', '_')}.pdf"
 
             file_path, _ = QFileDialog.getSaveFileName(
-                self,  # Rodzic okna
-                "Zapisz deklarację jako",  # Tytuł okna
-                default_filename,  # Domyślna nazwa pliku
-                "Pliki PDF (*.pdf)"  # Filtr
+                self,
+                "Zapisz deklarację jako",
+                default_filename,
+                "Pliki PDF (*.pdf)"
             )
 
-            # 4. Jeśli użytkownik wybrał ścieżkę (nie kliknął "Anuluj")
             if file_path:
-                with open(file_path, 'wb') as f:  # 'wb' - zapis w trybie binarnym
+                with open(file_path, 'wb') as f:
                     f.write(pdf_data)
 
                 QMessageBox.information(
                     self,
                     "Sukces",
-                    f"Plik został zapisany pomyślnie w:\n{file_path}"
+                    f"Plik PDF został zapisany:\n{file_path}"
                 )
-            # Jeśli użytkownik kliknął "Anuluj", nic się nie dzieje.
 
         except Exception as e:
-            # Jeśli wystąpi błąd, pokaż szczegóły
             QMessageBox.critical(
                 self,
                 "Błąd generowania PDF",
                 f"Nie udało się wygenerować pliku PDF.\n\n"
-                f"Szczegóły błędu: {e}\n\n"
-                f"Upewnij się, że program 'wkhtmltopdf' jest zainstalowany i dostępny w systemie."
+                f"Szczegóły błędu: {e}"
+            )
+
+    def _generate_docx(self):
+        """Generuje DOCX z możliwością wyboru ścieżki zapisu przez użytkownika."""
+        if not self._validate_input():
+            return
+
+        try:
+            declaration = self._create_declaration()
+
+            # Przygotuj domyślną nazwę pliku
+            safe_product_name = "".join(c for c in declaration.product.name if c.isalnum() or c in (' ', '-')).rstrip()
+            default_filename = f"Deklaracja_{safe_product_name.replace(' ', '_')}.docx"
+
+            # Otwórz dialog "Zapisz jako"
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Zapisz deklarację jako",
+                default_filename,
+                "Pliki Word (*.docx)"
+            )
+
+            # Jeśli użytkownik wybrał ścieżkę
+            if file_path:
+                # Wygeneruj DOCX w pamięci
+                html_content = self.pdf_generator.generate_html_content(declaration)
+
+                from bs4 import BeautifulSoup
+                from docx import Document
+                from docx.shared import Inches, Pt
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+                soup = BeautifulSoup(html_content, 'html.parser')
+                doc = Document()
+
+                # Ustaw marginesy
+                for section in doc.sections:
+                    section.top_margin = Inches(0.59)
+                    section.bottom_margin = Inches(0.59)
+                    section.left_margin = Inches(0.59)
+                    section.right_margin = Inches(0.59)
+
+                # Przetwórz HTML
+                body = soup.find('body')
+                if body:
+                    self.pdf_generator._process_html_to_docx(doc, body)
+
+                # Zapisz w wybranej lokalizacji
+                doc.save(file_path)
+
+                QMessageBox.information(
+                    self,
+                    "Sukces",
+                    f"Plik DOCX został zapisany:\n{file_path}"
+                )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Błąd generowania DOCX",
+                f"Nie udało się wygenerować pliku DOCX.\n\n"
+                f"Szczegóły błędu: {e}"
             )
 
     def refresh_data(self):
