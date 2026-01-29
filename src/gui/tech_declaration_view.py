@@ -81,24 +81,6 @@ class TechDeclarationView(QWidget):
         lang_layout.addStretch()
         layout.addLayout(lang_layout)
 
-        # Wybór typu deklaracji
-        type_layout = QHBoxLayout()
-        type_layout.addWidget(QLabel("Typ:"))
-
-        self.type_group = QButtonGroup()
-        self.radio_tech = QRadioButton("Technologiczna")
-        self.radio_bok = QRadioButton("BOK (z danymi klienta)")
-        self.radio_tech.setChecked(True)
-        self.radio_bok.setEnabled(False)
-
-        self.type_group.addButton(self.radio_tech, 1)
-        self.type_group.addButton(self.radio_bok, 2)
-
-        type_layout.addWidget(self.radio_tech)
-        type_layout.addWidget(self.radio_bok)
-        type_layout.addStretch()
-        layout.addLayout(type_layout)
-
         group.setLayout(layout)
         return group
 

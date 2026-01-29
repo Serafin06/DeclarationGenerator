@@ -70,18 +70,12 @@ class PDFGenerator:
         html_content = self.generate_html_content(declaration)
 
         try:
-            # xhtml2pdf - czysto pythonowa biblioteka
-            result = BytesIO()
-            pisa_status = pisa.CreatePDF(
-                src=html_content,
-                dest=result,
-                encoding='utf-8'
-            )
+            from weasyprint import HTML
 
-            if pisa_status.err:
-                raise Exception("xhtml2pdf zgłosił błędy podczas konwersji")
+            # WeasyPrint z base_url dla obrazów
+            pdf_bytes = HTML(string=html_content, base_url=str(TEMPLATES_PATH)).write_pdf()
 
-            return result.getvalue()
+            return pdf_bytes
 
         except Exception as e:
             raise Exception(f"Błąd generowania PDF: {e}")
