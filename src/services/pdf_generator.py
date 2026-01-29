@@ -3,8 +3,6 @@ PDFGenerator - Generuje HTML i PDF z szablonów Jinja2
 """
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
-from xhtml2pdf import pisa
-from io import BytesIO
 from datetime import datetime
 from src.config.constants import (
     TEMPLATES_PATH, OUTPUT_PATH,
@@ -27,6 +25,7 @@ class PDFGenerator:
             autoescape=True
         )
         OUTPUT_PATH.mkdir(exist_ok=True, parents=True)
+        self.templates_base_path = TEMPLATES_PATH
 
     def _get_template_path(self, declaration: Declaration) -> Path:
         """Zwraca odpowiednią ścieżkę szablonu"""
@@ -41,11 +40,26 @@ class PDFGenerator:
         context = declaration.to_template_dict()
         context['texts'] = texts
 
-        # Zabezpieczenie przed None w dacie
         if declaration.generation_date:
             context['generation_date'] = declaration.generation_date.strftime("%d.%m.%Y")
         else:
             context['generation_date'] = datetime.now().strftime("%d.%m.%Y")
+
+        # Embed obrazy jako base64
+        import base64
+
+        logo_path = self.templates_base_path / "logo.jpg"
+        podpis_path = self.templates_base_path / "podpis.png"
+
+        if logo_path.exists():
+            with open(logo_path, 'rb') as f:
+                logo_b64 = base64.b64encode(f.read()).decode()
+                context['logo_base64'] = f"data:image/jpeg;base64,{logo_b64}"
+
+        if podpis_path.exists():
+            with open(podpis_path, 'rb') as f:
+                podpis_b64 = base64.b64encode(f.read()).decode()
+                context['podpis_base64'] = f"data:image/png;base64,{podpis_b64}"
 
         return context
 
@@ -71,9 +85,18 @@ class PDFGenerator:
 
         try:
             from weasyprint import HTML
+            from pathlib import WindowsPath
 
-            # WeasyPrint z base_url dla obrazów
-            pdf_bytes = HTML(string=html_content, base_url=str(TEMPLATES_PATH)).write_pdf()
+            # Konwertuj UNC path na file:// URL dla WeasyPrint
+            if isinstance(self.templates_base_path, WindowsPath):
+                # Windows UNC path -> file:// URL
+                base_url = self.templates_base_path.as_uri()
+            else:
+                base_url = str(self.templates_base_path)
+
+            print(f"DEBUG base_url as URI: {base_url}")
+
+            pdf_bytes = HTML(string=html_content, base_url=base_url).write_pdf()
 
             return pdf_bytes
 
