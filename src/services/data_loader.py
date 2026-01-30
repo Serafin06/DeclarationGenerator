@@ -119,63 +119,72 @@ class DataLoader:
 
     def build_structure_data(self, mat1: str, mat2: str) -> Dict:
         """
-        Buduje dane struktury z dwóch materiałów (na bieżąco).
-        Łączy SML i Dual Use z deduplikacją po ID.
+        Buduje dane struktury z dwóch materiałów (WSZYSCY dostawcy).
+        - SML: maksymalna wartość dla każdego substanceId
+        - Dual Use: unikalne ID bez duplikatów
 
         Returns: {
-            'substances': [...],  # dla tabeli SML
-            'dual_use': [...]     # lista ID dual use
+            'substances': [...],  # dla tabeli SML - KLUCZE: nr_ref, nr_cas, name, sml_limit
+            'dual_use': [...]     # lista stringów "Nazwa (E-symbol)"
         }
         """
-        from src.config.constants import SUBSTANCES_MASTER, DUAL_USE_MASTER
+        from src.config.constants import MATERIALS_DB, SUBSTANCES_MASTER, DUAL_USE_MASTER
 
-        # Pobierz dane obu materiałów (pierwszy dostawca)
-        mat1_data = self.get_material_data(mat1, 0)
-        mat2_data = self.get_material_data(mat2, 0)
-
-        if not mat1_data or not mat2_data:
-            return {'substances': [], 'dual_use': []}
-
-        # Master JSONy
+        materials_db = self.load_json(MATERIALS_DB)
         substances_master = self.load_json(SUBSTANCES_MASTER)
         dual_use_master = self.load_json(DUAL_USE_MASTER)
 
-        # === SML - deduplikacja z sumowaniem wartości ===
-        sml_dict = {}  # {substanceId: total_value}
+        # Pobierz WSZYSTKICH dostawców dla obu materiałów
+        mat1_suppliers = materials_db.get('materials', {}).get(mat1, [])
+        mat2_suppliers = materials_db.get('materials', {}).get(mat2, [])
 
-        for item in mat1_data.get('sml', []) + mat2_data.get('sml', []):
-            sid = item['substanceId']
-            val = item.get('value', 0)
-            sml_dict[sid] = sml_dict.get(sid, 0) + val
+        # === SML - maksymalna wartość dla każdego substanceId ===
+        sml_max = {}  # {substanceId: max_value}
+
+        for supplier_data in mat1_suppliers + mat2_suppliers:
+            for item in supplier_data.get('sml', []):
+                sid = item['substanceId']
+                val = item.get('value', 0)
+
+                if sid not in sml_max or val > sml_max[sid]:
+                    sml_max[sid] = val
 
         # Buduj listę substancji dla tabeli
         substances_list = []
-        for sid, total_val in sml_dict.items():
+        for sid, max_val in sml_max.items():
             sid_str = str(sid)
             master_data = substances_master.get(sid_str, {})
 
+            # Użyj name_pl dla PL, name_en jako fallback
+            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+
             substances_list.append({
-                'ref_no': master_data.get('ref_no', ''),
-                'cas': master_data.get('cas', ''),
-                'name_en': master_data.get('name_en', ''),
-                'name_pl': master_data.get('name_pl', ''),
-                'sml_value': total_val
+                'nr_ref': master_data.get('ref_no', ''),
+                'nr_cas': master_data.get('cas', ''),
+                'name': name,
+                'sml_limit': max_val
             })
 
-        # === Dual Use - deduplikacja po ID ===
-        dual_use_ids = set(mat1_data.get('dualUse', []) + mat2_data.get('dualUse', []))
+        # === Dual Use - unikalne ID ===
+        dual_use_ids = set()
 
+        for supplier_data in mat1_suppliers + mat2_suppliers:
+            for did in supplier_data.get('dualUse', []):
+                dual_use_ids.add(did)
+
+        # Formatuj jako stringi "Nazwa (E-symbol)"
         dual_use_list = []
-        for did in dual_use_ids:
+        for did in sorted(dual_use_ids):
             did_str = str(did)
             master_data = dual_use_master.get(did_str, {})
 
-            dual_use_list.append({
-                'e_symbol': master_data.get('e_symbol', ''),
-                'cas': master_data.get('cas', ''),
-                'name_en': master_data.get('name_en', ''),
-                'name_pl': master_data.get('name_pl', '')
-            })
+            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            e_symbol = master_data.get('e_symbol', '')
+
+            if name and e_symbol:
+                dual_use_list.append(f"{name} ({e_symbol})")
+            elif name:
+                dual_use_list.append(name)
 
         return {
             'substances': substances_list,

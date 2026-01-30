@@ -256,6 +256,15 @@ class TechDeclarationView(QWidget):
 
             declaration.substances_table = structure_data.get('substances', [])
             declaration.dual_use_list = structure_data.get('dual_use', [])
+
+            # DEBUG
+            print(f"DEBUG substances_table: {len(declaration.substances_table)} items")
+            print(f"DEBUG dual_use_list: {len(declaration.dual_use_list)} items")
+            if declaration.substances_table:
+                print(f"DEBUG first substance: {declaration.substances_table[0]}")
+            if declaration.dual_use_list:
+                print(f"DEBUG first dual_use: {declaration.dual_use_list[0]}")
+
         except Exception as e:
             print(f"Błąd ładowania danych struktury: {e}")
             declaration.substances_table = []
