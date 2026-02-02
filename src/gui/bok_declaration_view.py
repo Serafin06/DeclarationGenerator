@@ -26,12 +26,15 @@ class BOKDeclarationView(QWidget):
         super().__init__()
         self.data_loader = data_loader
         self.db_service = DatabaseService()
-        self.products = []  # Lista obiektów ProductBatch
+        self.products = []
         self.pdf_generator = PDFGenerator(self.data_loader)
 
         self.structure_locked = False
-
         self.available_materials = self.data_loader.get_materials_list()
+
+        # Dane struktury z pierwszego zlecenia
+        self.structure_from_db = None  # Słownik z danymi struktury
+
         self._init_ui()
         self._test_db_connection()
 
@@ -90,28 +93,70 @@ class BOKDeclarationView(QWidget):
         struct_group = QGroupBox("Specyfikacja Struktury")
         s_layout = QFormLayout()
 
+        # Checkbox trilayer
+        self.checkbox_trilayer = QCheckBox("Struktura 3-warstwowa")
+        self.checkbox_trilayer.toggled.connect(self._toggle_trilayer)
+        s_layout.addRow("", self.checkbox_trilayer)
+
+        # Materiały
         lam_layout = QHBoxLayout()
         self.combo_mat1 = QComboBox()
         self.combo_mat1.addItems(self.available_materials)
         self.combo_mat2 = QComboBox()
         self.combo_mat2.addItems(self.available_materials)
+        self.combo_mat3 = QComboBox()
+        self.combo_mat3.addItems(self.available_materials)
+
         self.combo_mat1.currentTextChanged.connect(self._update_laminate_info)
         self.combo_mat2.currentTextChanged.connect(self._update_laminate_info)
+        self.combo_mat3.currentTextChanged.connect(self._update_laminate_info)
+
+        self.label_mat3 = QLabel("/")
+        self.label_mat3.setVisible(False)
+        self.combo_mat3.setVisible(False)
 
         lam_layout.addWidget(self.combo_mat1)
         lam_layout.addWidget(QLabel("/"))
         lam_layout.addWidget(self.combo_mat2)
-        s_layout.addRow("Struktura:", lam_layout)
+        lam_layout.addWidget(self.label_mat3)
+        lam_layout.addWidget(self.combo_mat3)
+        s_layout.addRow("Materiały:", lam_layout)
 
-        # DODAJ CHECKBOX
-        self.checkbox_auto_structure = QCheckBox("Auto-uzupełnij strukturę z pierwszego zlecenia")
+        # Grubości
+        thick_layout = QHBoxLayout()
+        self.input_thick1 = QLineEdit()
+        self.input_thick1.setPlaceholderText("12")
+        self.input_thick1.setFixedWidth(60)
+        self.input_thick2 = QLineEdit()
+        self.input_thick2.setPlaceholderText("40")
+        self.input_thick2.setFixedWidth(60)
+        self.input_thick3 = QLineEdit()
+        self.input_thick3.setPlaceholderText("50")
+        self.input_thick3.setFixedWidth(60)
+        self.input_thick3.setVisible(False)
+
+        thick_layout.addWidget(self.input_thick1)
+        thick_layout.addWidget(QLabel("/"))
+        thick_layout.addWidget(self.input_thick2)
+        self.label_thick3 = QLabel("/")
+        self.label_thick3.setVisible(False)
+        thick_layout.addWidget(self.label_thick3)
+        thick_layout.addWidget(self.input_thick3)
+        thick_layout.addWidget(QLabel("μm"))
+        thick_layout.addStretch()
+        s_layout.addRow("Grubości warstw:", thick_layout)
+
+        # Auto-uzupełnianie
+        self.checkbox_auto_structure = QCheckBox("Auto-uzupełnij strukturę i grubości z pierwszego zlecenia")
         self.checkbox_auto_structure.setChecked(True)
         s_layout.addRow("", self.checkbox_auto_structure)
 
+        # Podgląd substancji
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
         self.preview_text.setMaximumHeight(60)
         s_layout.addRow("Info o substancjach:", self.preview_text)
+
         struct_group.setLayout(s_layout)
         layout.addWidget(struct_group)
 
@@ -195,21 +240,50 @@ class BOKDeclarationView(QWidget):
         if not self.products:
             self.input_client_id.setText(str(data['client_number']))
             self.input_client_name.setText(data['client_name'])
-            # ZMIANA 2: Czyszczenie adresu z nadmiarowych spacji
             self.input_client_addr.setText(self._clean_address(data['client_address']))
 
-            db_struct = data.get('product_structure', '')
+            # Parsuj strukturę z bazy
+            db_struct = data.get('product_structure', '')  # TODO: zamień na właściwą nazwę kolumny
+
+            # TODO: Dodaj nazwy kolumn z grubościami
+            thick1 = data.get('COLUMN_NAME_THICK1')  # <- TUTAJ WPISZ NAZWĘ KOLUMNY
+            thick2 = data.get('COLUMN_NAME_THICK2')  # <- TUTAJ WPISZ NAZWĘ KOLUMNY
+            thick3 = data.get('COLUMN_NAME_THICK3')  # <- TUTAJ WPISZ NAZWĘ KOLUMNY (opcjonalnie)
+
             if db_struct and "/" in db_struct:
-                m1, m2 = db_struct.split('/')[:2]
+                parts = db_struct.split('/')
+
+                # Sprawdź czy 2-laminat czy 3-laminat
+                is_trilayer = len(parts) == 3
 
                 if self.checkbox_auto_structure.isChecked():
-                    self.combo_mat1.setCurrentText(m1.strip())
-                    self.combo_mat2.setCurrentText(m2.strip())
+                    # Ustaw materiały
+                    self.combo_mat1.setCurrentText(parts[0].strip())
+                    self.combo_mat2.setCurrentText(parts[1].strip())
+
+                    if is_trilayer:
+                        self.checkbox_trilayer.setChecked(True)
+                        self.combo_mat3.setCurrentText(parts[2].strip())
+
+                    # Ustaw grubości
+                    if thick1:
+                        self.input_thick1.setText(str(thick1))
+                    if thick2:
+                        self.input_thick2.setText(str(thick2))
+                    if thick3 and is_trilayer:
+                        self.input_thick3.setText(str(thick3))
+
                     self.structure_locked = True
+
+                    struct_info = f"{db_struct} {thick1}/{thick2}"
+                    if is_trilayer and thick3:
+                        struct_info += f"/{thick3}"
+                    struct_info += " μm"
+
                     QMessageBox.information(
                         self,
                         "Struktura ustawiona",
-                        f"Struktura: {m1}/{m2}\n\nKolejne zlecenia będą sprawdzane."
+                        f"Struktura: {struct_info}\n\nKolejne zlecenia będą sprawdzane."
                     )
                 else:
                     QMessageBox.information(
@@ -221,7 +295,11 @@ class BOKDeclarationView(QWidget):
         # === KOLEJNE PRODUKTY - sprawdź strukturę ===
         else:
             db_struct = data.get('product_structure', '')
-            current_struct = f"{self.combo_mat1.currentText()}/{self.combo_mat2.currentText()}"
+
+            if self.checkbox_trilayer.isChecked():
+                current_struct = f"{self.combo_mat1.currentText()}/{self.combo_mat2.currentText()}/{self.combo_mat3.currentText()}"
+            else:
+                current_struct = f"{self.combo_mat1.currentText()}/{self.combo_mat2.currentText()}"
 
             if db_struct and db_struct.strip() != current_struct:
                 reply = QMessageBox.warning(
@@ -285,10 +363,23 @@ class BOKDeclarationView(QWidget):
         self._update_products_table()
 
     def _update_laminate_info(self):
-        m1, m2 = self.combo_mat1.currentText(), self.combo_mat2.currentText()
-        data = self.data_loader.build_structure_data(m1, m2)
+        """Aktualizuje podgląd struktury"""
+        m1 = self.combo_mat1.currentText()
+        m2 = self.combo_mat2.currentText()
+
+        if self.checkbox_trilayer.isChecked():
+            m3 = self.combo_mat3.currentText()
+            if not m3:
+                return
+            data = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
+            structure = f"{m1}/{m2}/{m3}"
+        else:
+            data = self.data_loader.build_structure_data(m1, m2)
+            structure = f"{m1}/{m2}"
+
         self.preview_text.setPlainText(
-            f"Struktura: {m1}/{m2}\nSML: {len(data['substances'])} | Dual: {len(data['dual_use'])}")
+            f"Struktura: {structure}\nSML: {len(data['substances'])} | Dual: {len(data['dual_use'])}"
+        )
 
     def _create_action_buttons(self):
         layout = QHBoxLayout()
@@ -326,7 +417,7 @@ class BOKDeclarationView(QWidget):
         declaration.declaration_type = 'bok'
         declaration.generation_date = date.today()
 
-        # 1. Dane klienta i dokumentu
+        # Dane klienta
         declaration.client = ClientData(
             client_code=self.input_client_id.text().strip(),
             client_name=self.input_client_name.text().strip(),
@@ -334,25 +425,33 @@ class BOKDeclarationView(QWidget):
             invoice_number=self.input_invoice.text().strip()
         )
 
-        # 2. Struktura laminatu
+        # Struktura z grubościami
         m1 = self.combo_mat1.currentText()
         m2 = self.combo_mat2.currentText()
-        structure_str = f"{m1}/{m2}"
+        t1 = self.input_thick1.text().strip()
+        t2 = self.input_thick2.text().strip()
 
-        # Pobierz dane o substancjach
-        structure_details = self.data_loader.build_structure_data(m1, m2)
+        if self.checkbox_trilayer.isChecked():
+            m3 = self.combo_mat3.currentText()
+            t3 = self.input_thick3.text().strip()
+            structure_str = f"{m1}/{m2}/{m3}"
+            thickness_str = f"{t1}/{t2}/{t3} μm" if all([t1, t2, t3]) else ""
+            structure_details = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
+        else:
+            structure_str = f"{m1}/{m2}"
+            thickness_str = f"{t1}/{t2} μm" if t1 and t2 else ""
+            structure_details = self.data_loader.build_structure_data(m1, m2)
 
-        # POPRAWKA - Product ma tylko name i structure
+        # Pełna nazwa ze strukturą i grubościami
+        full_structure = f"{structure_str} {thickness_str}".strip()
+
         declaration.product = Product(
-            name=self.input_art_desc.text().strip() or "Laminat",
+            name=full_structure,  # np. "PET/PE 12/40 μm"
             structure=structure_str
         )
 
-        # Substancje i dual use są OSOBNYMI polami w Declaration
         declaration.substances_table = structure_details.get('substances', [])
         declaration.dual_use_list = structure_details.get('dual_use', [])
-
-        # 3. Lista partii
         declaration.batches = self.products.copy()
 
         return declaration
@@ -479,3 +578,11 @@ class BOKDeclarationView(QWidget):
             return False
 
         return True
+
+    def _toggle_trilayer(self, checked: bool):
+        """Pokazuje/ukrywa trzecią warstwę"""
+        self.label_mat3.setVisible(checked)
+        self.combo_mat3.setVisible(checked)
+        self.label_thick3.setVisible(checked)
+        self.input_thick3.setVisible(checked)
+        self._update_laminate_info()
