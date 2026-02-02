@@ -196,3 +196,68 @@ class DataLoader:
         if self.network_service:
             return self.network_service.get_status()
         return None
+
+    def build_structure_data_trilayer(self, mat1: str, mat2: str, mat3: str) -> Dict:
+        """Jak build_structure_data ale dla 3 materiałów"""
+        from src.config.constants import MATERIALS_DB, SUBSTANCES_MASTER, DUAL_USE_MASTER
+
+        materials_db = self.load_json(MATERIALS_DB)
+        substances_master = self.load_json(SUBSTANCES_MASTER)
+        dual_use_master = self.load_json(DUAL_USE_MASTER)
+
+        # Pobierz WSZYSTKICH dostawców dla trzech materiałów
+        mat1_suppliers = materials_db.get('materials', {}).get(mat1, [])
+        mat2_suppliers = materials_db.get('materials', {}).get(mat2, [])
+        mat3_suppliers = materials_db.get('materials', {}).get(mat3, [])
+
+        # SML - maksymalna wartość
+        sml_max = {}
+
+        for supplier_data in mat1_suppliers + mat2_suppliers + mat3_suppliers:
+            for item in supplier_data.get('sml', []):
+                sid = item['substanceId']
+                val = item.get('value', 0)
+
+                if sid not in sml_max or val > sml_max[sid]:
+                    sml_max[sid] = val
+
+        # Buduj listę substancji
+        substances_list = []
+        for sid, max_val in sml_max.items():
+            sid_str = str(sid)
+            master_data = substances_master.get(sid_str, {})
+
+            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+
+            substances_list.append({
+                'nr_ref': master_data.get('ref_no', ''),
+                'nr_cas': master_data.get('cas', ''),
+                'name': name,
+                'sml_limit': max_val
+            })
+
+        # Dual Use - unikalne ID
+        dual_use_ids = set()
+
+        for supplier_data in mat1_suppliers + mat2_suppliers + mat3_suppliers:
+            for did in supplier_data.get('dualUse', []):
+                dual_use_ids.add(did)
+
+        # Formatuj jako stringi
+        dual_use_list = []
+        for did in sorted(dual_use_ids):
+            did_str = str(did)
+            master_data = dual_use_master.get(did_str, {})
+
+            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            e_symbol = master_data.get('e_symbol', '')
+
+            if name and e_symbol:
+                dual_use_list.append(f"{name} ({e_symbol})")
+            elif name:
+                dual_use_list.append(name)
+
+        return {
+            'substances': substances_list,
+            'dual_use': dual_use_list
+        }

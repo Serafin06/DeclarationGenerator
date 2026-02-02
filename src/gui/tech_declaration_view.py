@@ -41,6 +41,11 @@ class TechDeclarationView(QWidget):
         options_group = self._create_options_section()
         layout.addWidget(options_group)
 
+        # Checkbox 3-laminat
+        self.checkbox_trilayer = QCheckBox("Struktura 3-warstwowa (trójlaminat)")
+        self.checkbox_trilayer.toggled.connect(self._toggle_third_material)
+        layout.addWidget(self.checkbox_trilayer)
+
         # Sekcja danych produktu
         product_group = self._create_product_section()
         layout.addWidget(product_group)
@@ -87,29 +92,39 @@ class TechDeclarationView(QWidget):
     def _create_product_section(self) -> QGroupBox:
         """Tworzy sekcję danych produktu"""
         group = QGroupBox("Dane produktu")
-        layout = QFormLayout()
+        self.product_layout = QFormLayout()  # Zmień na self.product_layout
 
         # Wybór materiału 1
         self.combo_material1 = QComboBox()
         self.combo_material1.currentTextChanged.connect(self._update_structure_preview)
-        layout.addRow("Materiał 1 (zewnętrzny):", self.combo_material1)
+        self.product_layout.addRow("Materiał 1 (zewnętrzny):", self.combo_material1)
 
         # Wybór materiału 2
         self.combo_material2 = QComboBox()
         self.combo_material2.currentTextChanged.connect(self._update_structure_preview)
-        layout.addRow("Materiał 2 (wewnętrzny):", self.combo_material2)
+        self.product_layout.addRow("Materiał 2 (środkowy):", self.combo_material2)
 
-        # Struktura (wyświetlana dla pewności)
+        # Wybór materiału 3 (ukryty domyślnie)
+        self.combo_material3 = QComboBox()
+        self.combo_material3.currentTextChanged.connect(self._update_structure_preview)
+        self.material3_label = QLabel("Materiał 3 (wewnętrzny):")
+        self.product_layout.addRow(self.material3_label, self.combo_material3)
+
+        # Ukryj trzeci materiał na start
+        self.material3_label.setVisible(False)
+        self.combo_material3.setVisible(False)
+
+        # Struktura
         self.label_structure = QLabel("")
         self.label_structure.setStyleSheet("font-weight: bold; color: #7f8c8d;")
-        layout.addRow("Zidentyfikowana struktura:", self.label_structure)
+        self.product_layout.addRow("Zidentyfikowana struktura:", self.label_structure)
 
-        # Nazwa produktu (Auto-generowana, ale edytowalna w razie potrzeby)
+        # Nazwa produktu
         self.input_product_name = QLineEdit()
         self.input_product_name.setStyleSheet("font-weight: bold; color: #2980b9; background-color: #f8f9fa;")
-        layout.addRow("Pełna nazwa produktu (pkt 1):", self.input_product_name)
+        self.product_layout.addRow("Pełna nazwa produktu (pkt 1):", self.input_product_name)
 
-        group.setLayout(layout)
+        group.setLayout(self.product_layout)
         return group
 
     def _create_preview_section(self) -> QGroupBox:
@@ -179,24 +194,25 @@ class TechDeclarationView(QWidget):
 
             self.combo_material1.clear()
             self.combo_material2.clear()
+            self.combo_material3.clear()  # Dodaj
+
             self.combo_material1.addItems(materials)
             self.combo_material2.addItems(materials)
+            self.combo_material3.addItems(materials)  # Dodaj
 
             # Ustaw domyślne wartości
             if "PET" in materials:
                 self.combo_material1.setCurrentText("PET")
             if "PE" in materials:
                 self.combo_material2.setCurrentText("PE")
+                self.combo_material3.setCurrentText("PE")  # Dodaj
 
             self._update_structure_preview()
         except Exception as e:
             QMessageBox.warning(self, "Błąd", f"Nie udało się załadować danych: {e}")
 
     def _update_structure_preview(self):
-        """
-        Automatycznie aktualizuje nazwę produktu (pkt 1) oraz
-        weryfikuje dane struktury w bazie danych.
-        """
+        """Aktualizuje strukturę i podgląd"""
         try:
             mat1 = self.combo_material1.currentText()
             mat2 = self.combo_material2.currentText()
@@ -204,8 +220,19 @@ class TechDeclarationView(QWidget):
             if not mat1 or not mat2:
                 return
 
-            # Składanie struktury
-            structure = f"{mat1}/{mat2}"
+            # Sprawdź czy 3-laminat
+            is_trilayer = self.checkbox_trilayer.isChecked()
+
+            if is_trilayer:
+                mat3 = self.combo_material3.currentText()
+                if not mat3:
+                    return
+                structure = f"{mat1}/{mat2}/{mat3}"
+                structure_data = self.data_loader.build_structure_data_trilayer(mat1, mat2, mat3)
+            else:
+                structure = f"{mat1}/{mat2}"
+                structure_data = self.data_loader.build_structure_data(mat1, mat2)
+
             self.label_structure.setText(structure)
 
             # Automatyczne generowanie nazwy
@@ -214,15 +241,12 @@ class TechDeclarationView(QWidget):
             full_name = f"{prefix} {structure}"
             self.input_product_name.setText(full_name)
 
-            # Pobierz dane struktury (budowane dynamicznie)
-            structure_data = self.data_loader.build_structure_data(mat1, mat2)
-
             substances_count = len(structure_data.get('substances', []))
             dual_use_count = len(structure_data.get('dual_use', []))
 
             preview = f"✅ Struktura zbudowana: {structure}\n"
-            preview += f"Liczba substancji SML (tabela pkt 3): {substances_count}\n"
-            preview += f"Substancje Dual Use (pkt 4): {dual_use_count}"
+            preview += f"Liczba substancji SML (tabela pkt 6): {substances_count}\n"
+            preview += f"Substancje Dual Use (pkt 8): {dual_use_count}"
             self.preview_text.setPlainText(preview)
 
         except Exception as e:
@@ -242,17 +266,23 @@ class TechDeclarationView(QWidget):
         declaration.declaration_type = 'tech'
         declaration.generation_date = date.today()
 
-        # Punkt 1: Nazwa i struktura
         declaration.product = Product(
             name=self.input_product_name.text().strip(),
             structure=self.label_structure.text()
         )
 
-        # Dane tabelaryczne - budowane dynamicznie
         try:
             mat1 = self.combo_material1.currentText()
             mat2 = self.combo_material2.currentText()
-            structure_data = self.data_loader.build_structure_data(mat1, mat2)
+
+            # Sprawdź czy 3-laminat
+            is_trilayer = self.checkbox_trilayer.isChecked()
+
+            if is_trilayer:
+                mat3 = self.combo_material3.currentText()
+                structure_data = self.data_loader.build_structure_data_trilayer(mat1, mat2, mat3)
+            else:
+                structure_data = self.data_loader.build_structure_data(mat1, mat2)
 
             declaration.substances_table = structure_data.get('substances', [])
             declaration.dual_use_list = structure_data.get('dual_use', [])
@@ -380,6 +410,21 @@ class TechDeclarationView(QWidget):
                 f"Nie udało się wygenerować pliku DOCX.\n\n"
                 f"Szczegóły błędu: {e}"
             )
+
+    def _toggle_third_material(self, checked: bool):
+        """Pokazuje/ukrywa trzeci materiał"""
+        self.material3_label.setVisible(checked)
+        self.combo_material3.setVisible(checked)
+
+        # Aktualizuj etykiety
+        if checked:
+            # Dla 3-laminatu zmień etykiety
+            self.product_layout.labelForField(self.combo_material2).setText("Materiał 2 (środkowy):")
+        else:
+            # Dla 2-laminatu
+            self.product_layout.labelForField(self.combo_material2).setText("Materiał 2 (wewnętrzny):")
+
+        self._update_structure_preview()
 
     def refresh_data(self):
         self._load_initial_data()
