@@ -96,7 +96,7 @@ class BOKDeclarationView(QWidget):
         # Checkbox trilayer
         self.checkbox_trilayer = QCheckBox("Struktura 3-warstwowa")
         self.checkbox_trilayer.toggled.connect(self._toggle_trilayer)
-        s_layout.addRow("", self.checkbox_trilayer)
+        s_layout.addRow(self.checkbox_trilayer)
 
         # Materiały
         lam_layout = QHBoxLayout()
@@ -106,10 +106,6 @@ class BOKDeclarationView(QWidget):
         self.combo_mat2.addItems(self.available_materials)
         self.combo_mat3 = QComboBox()
         self.combo_mat3.addItems(self.available_materials)
-
-        self.combo_mat1.currentTextChanged.connect(self._update_laminate_info)
-        self.combo_mat2.currentTextChanged.connect(self._update_laminate_info)
-        self.combo_mat3.currentTextChanged.connect(self._update_laminate_info)
 
         self.label_mat3 = QLabel("/")
         self.label_mat3.setVisible(False)
@@ -122,61 +118,59 @@ class BOKDeclarationView(QWidget):
         lam_layout.addWidget(self.combo_mat3)
         s_layout.addRow("Materiały:", lam_layout)
 
-        # Grubości
-        thick_layout = QHBoxLayout()
-        self.input_thick1 = QLineEdit()
-        self.input_thick1.setPlaceholderText("12")
-        self.input_thick1.setFixedWidth(60)
-        self.input_thick2 = QLineEdit()
-        self.input_thick2.setPlaceholderText("40")
-        self.input_thick2.setFixedWidth(60)
-        self.input_thick3 = QLineEdit()
-        self.input_thick3.setPlaceholderText("50")
-        self.input_thick3.setFixedWidth(60)
-        self.input_thick3.setVisible(False)
-
-        thick_layout.addWidget(self.input_thick1)
-        thick_layout.addWidget(QLabel("/"))
-        thick_layout.addWidget(self.input_thick2)
-        self.label_thick3 = QLabel("/")
-        self.label_thick3.setVisible(False)
-        thick_layout.addWidget(self.label_thick3)
-        thick_layout.addWidget(self.input_thick3)
-        thick_layout.addWidget(QLabel("μm"))
-        thick_layout.addStretch()
-        s_layout.addRow("Grubości warstw:", thick_layout)
-
-        # Auto-uzupełnianie
-        self.checkbox_auto_structure = QCheckBox("Auto-uzupełnij strukturę i grubości z pierwszego zlecenia")
-        self.checkbox_auto_structure.setChecked(True)
-        s_layout.addRow("", self.checkbox_auto_structure)
-
         # Podgląd substancji
-        self.preview_text = QTextEdit()
+        self.preview_text = QLineEdit()
         self.preview_text.setReadOnly(True)
-        self.preview_text.setMaximumHeight(60)
-        s_layout.addRow("Info o substancjach:", self.preview_text)
+        self.preview_text.setStyleSheet("background: #f0f0f0; font-size: 11px; color: #444;")
+        s_layout.addRow("Info:", self.preview_text)
 
         struct_group.setLayout(s_layout)
         layout.addWidget(struct_group)
 
-        # --- SEKCJA 4: DODAWANIE WYROBU (ZLECENIA) ---
+        # --- SEKCJA 4: DODAWANIE WYROBU ---
         add_group = QGroupBox("Dodaj Wyrób (Zlecenie)")
         a_layout = QFormLayout()
-        search_layout = QHBoxLayout()
-        self.input_zo = QLineEdit();
-        self.input_zo.setPlaceholderText("Nr zlecenia...")
-        # ZMIANA 1: Dodanie obsługi klawisza Enter
-        self.input_zo.returnPressed.connect(self._search_order)
-        btn_fetch = QPushButton("🔍 Pobierz");
-        btn_fetch.clicked.connect(self._search_order)
-        search_layout.addWidget(self.input_zo);
-        search_layout.addWidget(btn_fetch)
 
-        self.input_art_index = QLineEdit();
+        # Wyszukiwanie zlecenia
+        search_layout = QHBoxLayout()
+        self.input_zo = QLineEdit()
+        self.input_zo.setPlaceholderText("Nr zlecenia...")
+        self.input_zo.returnPressed.connect(self._search_order)
+        btn_fetch = QPushButton("🔍 Pobierz")
+        btn_fetch.clicked.connect(self._search_order)
+        search_layout.addWidget(self.input_zo)
+        search_layout.addWidget(btn_fetch)
+        a_layout.addRow("Zlecenie:", search_layout)
+
+        # Indeks
+        self.input_art_index = QLineEdit()
         self.input_art_index.setReadOnly(True)
+        a_layout.addRow("Indeks artykułu:", self.input_art_index)
+
+        # Pola + checkboxy
+        def make_row(chk, label, widget):
+            row = QHBoxLayout()
+            row.addWidget(chk)
+            row.addWidget(QLabel(label))
+            row.addWidget(widget)
+            row.addStretch()
+            return row
+
+        # Opis
+        self.chk_show_name = QCheckBox()
+        self.chk_show_name.setChecked(True)
         self.input_art_desc = QLineEdit()
+        a_layout.addRow(make_row(self.chk_show_name, "Opis produktu:", self.input_art_desc))
+
+        # Nr partii
+        self.chk_show_batch = QCheckBox()
+        self.chk_show_batch.setChecked(True)
         self.input_batch = QLineEdit()
+        a_layout.addRow(make_row(self.chk_show_batch, "Nr partii:", self.input_batch))
+
+        # Ilość
+        self.chk_show_qty = QCheckBox()
+        self.chk_show_qty.setChecked(True)
         qty_layout = QHBoxLayout()
         self.input_qty = QLineEdit()
         self.combo_unit = QComboBox()
@@ -184,23 +178,94 @@ class BOKDeclarationView(QWidget):
         self.combo_unit.setFixedWidth(60)
         qty_layout.addWidget(self.input_qty)
         qty_layout.addWidget(self.combo_unit)
+        row_qty = QHBoxLayout()
+        row_qty.addWidget(self.chk_show_qty)
+        row_qty.addWidget(QLabel("Ilość:"))
+        row_qty.addLayout(qty_layout)
+        row_qty.addStretch()
+        a_layout.addRow(row_qty)
+
+        # Grubości per produkt
+        self.input_prod_thick1 = QLineEdit()
+        self.input_prod_thick1.setFixedWidth(60)
+        self.input_prod_thick2 = QLineEdit()
+        self.input_prod_thick2.setFixedWidth(60)
+        self.input_prod_thick3 = QLineEdit()
+        self.input_prod_thick3.setFixedWidth(60)
+        self.label_prod_thick3 = QLabel("/")
+        self.label_prod_thick3.setVisible(False)
+        self.input_prod_thick3.setVisible(False)
+
+        # Data + grubości + przycisk
+        self.chk_show_date = QCheckBox()
+        self.chk_show_date.setChecked(True)
+        self.chk_show_thickness = QCheckBox()
+        self.chk_show_thickness.setChecked(True)
+
         self.input_date = QDateEdit()
         self.input_date.setCalendarPopup(True)
         self.input_date.setDate(QDate.currentDate())
 
-        a_layout.addRow("Zlecenie:", search_layout)
-        a_layout.addRow("Indeks artykułu:", self.input_art_index)
-        a_layout.addRow("Opis produktu:", self.input_art_desc)
-        a_layout.addRow("Nr partii:", self.input_batch)
-        a_layout.addRow("Data produkcji:", self.input_date)
-        a_layout.addRow("Ilość:", qty_layout)
+        row_final = QHBoxLayout()
+        row_final.addWidget(self.chk_show_date)
+        row_final.addWidget(QLabel("Data produkcji:"))
+        row_final.addWidget(self.input_date)
 
-        btn_add = QPushButton("➕ DODAJ WYRÓB DO LISTY")
+        row_final.addSpacing(20)
+        row_final.addWidget(self.chk_show_thickness)
+        row_final.addWidget(QLabel("Grubości:"))
+        row_final.addWidget(self.input_prod_thick1)
+        row_final.addWidget(QLabel("/"))
+        row_final.addWidget(self.input_prod_thick2)
+        row_final.addWidget(self.label_prod_thick3)
+        row_final.addWidget(self.input_prod_thick3)
+        row_final.addWidget(QLabel("μm"))
+
+        row_final.addStretch()
+
+        btn_add = QPushButton("➕ Dodaj")
+        btn_add.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                font-weight: bold;
+                padding: 6px 14px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #1e8c4d;
+            }
+        """)
+
         btn_add.clicked.connect(self._add_product_to_list)
-        btn_add.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; height: 35px;")
-        a_layout.addRow(btn_add)
+        row_final.addWidget(btn_add)
+
+        a_layout.addRow(row_final)
+
         add_group.setLayout(a_layout)
         layout.addWidget(add_group)
+
+        def bind_checkbox(chk, widget):
+            def toggle(state):
+                if state == Qt.Checked:
+                    widget.setEnabled(True)
+                    # przywróć wartość
+                    if hasattr(widget, "_saved"):
+                        widget.setText(widget._saved)
+                else:
+                    widget._saved = widget.text()
+                    widget.setText("")
+                    widget.setEnabled(False)
+
+            chk.stateChanged.connect(toggle)
+
+        bind_checkbox(self.chk_show_name, self.input_art_desc)
+        bind_checkbox(self.chk_show_batch, self.input_batch)
+        bind_checkbox(self.chk_show_qty, self.input_qty)
+        bind_checkbox(self.chk_show_date, self.input_date)
+        bind_checkbox(self.chk_show_thickness, self.input_prod_thick1)
+        bind_checkbox(self.chk_show_thickness, self.input_prod_thick2)
+        bind_checkbox(self.chk_show_thickness, self.input_prod_thick3)
 
         # --- SEKCJA 5: LISTA WPROWADZONYCH WYROBÓW (TABELA) ---
         table_group = QGroupBox("Wyroby w deklaracji")
@@ -243,12 +308,11 @@ class BOKDeclarationView(QWidget):
             self.input_client_addr.setText(self._clean_address(data['client_address']))
 
             # Parsuj strukturę z bazy
-            db_struct = data.get('product_structure', '')  # TODO: zamień na właściwą nazwę kolumny
+            db_struct = data.get('product_structure', '')
 
-            # TODO: Dodaj nazwy kolumn z grubościami
-            thick1 = data.get('COLUMN_NAME_THICK1')  # <- TUTAJ WPISZ NAZWĘ KOLUMNY
-            thick2 = data.get('COLUMN_NAME_THICK2')  # <- TUTAJ WPISZ NAZWĘ KOLUMNY
-            thick3 = data.get('COLUMN_NAME_THICK3')  # <- TUTAJ WPISZ NAZWĘ KOLUMNY (opcjonalnie)
+            thick1 = data.get('thickness1')
+            thick2 = data.get('thickness2')
+            thick3 = data.get('thickness3')
 
             if db_struct and "/" in db_struct:
                 parts = db_struct.split('/')
@@ -318,7 +382,6 @@ class BOKDeclarationView(QWidget):
         self.input_batch.setText(f"{zo}/{year}/ZK")
 
     def _add_product_to_list(self):
-        """Przenosi dane z pól do tabeli i czyści pola zlecenia"""
         idx = self.input_art_index.text().strip()
         desc = self.input_art_desc.text().strip()
         batch = self.input_batch.text().strip()
@@ -335,17 +398,31 @@ class BOKDeclarationView(QWidget):
             batch_number=batch,
             quantity=f"{qty} {unit}",
             production_date=self.input_date.date().toPyDate(),
-            expiry_date="12 miesięcy"
+            expiry_date="12 miesięcy",
+
+            thickness1=self.input_prod_thick1.text().strip(),
+            thickness2=self.input_prod_thick2.text().strip(),
+            thickness3=self.input_prod_thick3.text().strip(),
+
+            show_name=self.chk_show_name.isChecked(),
+            show_batch=self.chk_show_batch.isChecked(),
+            show_quantity=self.chk_show_qty.isChecked(),
+            show_production_date=self.chk_show_date.isChecked(),
+            show_thickness=self.chk_show_thickness.isChecked()
         )
+
         self.products.append(product)
         self._update_products_table()
 
-        # Czyścimy pola zlecenia
+        # Czyścimy pola
         self.input_zo.clear()
         self.input_art_index.clear()
         self.input_art_desc.clear()
         self.input_batch.clear()
         self.input_qty.clear()
+        self.input_prod_thick1.clear()
+        self.input_prod_thick2.clear()
+        self.input_prod_thick3.clear()
 
     def _update_products_table(self):
         self.table.setRowCount(len(self.products))
@@ -363,13 +440,13 @@ class BOKDeclarationView(QWidget):
         self._update_products_table()
 
     def _update_laminate_info(self):
-        """Aktualizuje podgląd struktury"""
         m1 = self.combo_mat1.currentText()
         m2 = self.combo_mat2.currentText()
 
         if self.checkbox_trilayer.isChecked():
             m3 = self.combo_mat3.currentText()
             if not m3:
+                self.preview_text.setText("")
                 return
             data = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
             structure = f"{m1}/{m2}/{m3}"
@@ -377,8 +454,8 @@ class BOKDeclarationView(QWidget):
             data = self.data_loader.build_structure_data(m1, m2)
             structure = f"{m1}/{m2}"
 
-        self.preview_text.setPlainText(
-            f"Struktura: {structure}\nSML: {len(data['substances'])} | Dual: {len(data['dual_use'])}"
+        self.preview_text.setText(
+            f"Struktura: {structure} | SML: {len(data['substances'])} | Dual: {len(data['dual_use'])}"
         )
 
     def _create_action_buttons(self):
@@ -579,10 +656,14 @@ class BOKDeclarationView(QWidget):
 
         return True
 
-    def _toggle_trilayer(self, checked: bool):
-        """Pokazuje/ukrywa trzecią warstwę"""
+    def _toggle_trilayer(self, checked):
+        # Sekcja 3
         self.label_mat3.setVisible(checked)
         self.combo_mat3.setVisible(checked)
-        self.label_thick3.setVisible(checked)
-        self.input_thick3.setVisible(checked)
+
+        # Sekcja 4
+        self.label_prod_thick3.setVisible(checked)
+        self.input_prod_thick3.setVisible(checked)
+
         self._update_laminate_info()
+

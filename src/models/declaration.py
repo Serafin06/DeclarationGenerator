@@ -38,12 +38,27 @@ class ClientData:
 @dataclass
 class ProductBatch:
     """Dane partii produktu (tylko dla wersji BOK)"""
+
     product_code: str = ""
     product_name: str = ""
     production_date: Optional[date] = None
     quantity: str = ""
     batch_number: str = ""
     expiry_date: str = ""
+
+    # NOWE POLA — indywidualne grubości
+    thickness1: str = ""
+    thickness2: str = ""
+    thickness3: str = ""
+
+    # NOWE POLA — checkboxy widoczności
+    show_name: bool = True
+    show_batch: bool = True
+    show_quantity: bool = True
+    show_production_date: bool = True
+    show_thickness: bool = True
+
+
 
 
 @dataclass
@@ -90,11 +105,12 @@ class Declaration:
             'batches': [
                 {
                     'code': b.product_code,
-                    'name': b.product_name,
-                    'production_date': b.production_date.strftime('%d.%m.%Y') if b.production_date else '',
-                    'quantity': b.quantity,
-                    'batch_number': b.batch_number,
-                    'expiry_date': b.expiry_date
+                    'name': b.product_name if b.show_name else '',
+                    'production_date': b.production_date.strftime('%d.%m.%Y') if (b.production_date and b.show_production_date) else '',
+                    'quantity': b.quantity if b.show_quantity else '',
+                    'batch_number': b.batch_number if b.show_batch else '',
+                    'expiry_date': b.expiry_date,
+                    'thickness': f"{b.thickness1}/{b.thickness2}/{b.thickness3} μm" if b.show_thickness else ''
                 } for b in self.batches
             ] if self.declaration_type == 'bok' else [],
             'substances_table': self.substances_table,

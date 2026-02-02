@@ -17,6 +17,9 @@ ZO_COLUMNS = {
     'product_structure': 'RECEPTURA_1',
     'production_date': 'TERMIN_ZAK',  # PLANOWANA Data produkcji
     'client_number': 'ID_KONTRAHENTA',
+    'thickness1': 'GRUBOSC_11',
+    'thickness2': 'GRUBOSC_21',
+    'thickness3': 'GRUBOSC_31',
 }
 
 CLIENT_COLUMNS = {

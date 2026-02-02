@@ -40,6 +40,9 @@ class DatabaseService:
                     zo.{ZO_COLUMNS['product_structure']} as product_structure,
                     zo.{ZO_COLUMNS['production_date']} as production_date,
                     zo.{ZO_COLUMNS['client_number']} as client_number,
+                    zo.{ZO_COLUMNS['thickness1']} as thickness1,
+                    zo.{ZO_COLUMNS['thickness2']} as thickness2,
+                    zo.{ZO_COLUMNS['thickness3']} as thickness3,
                     k.{CLIENT_COLUMNS['client_name']} as client_name,
                     k.{CLIENT_COLUMNS['ulica']} as street,
                     k.{CLIENT_COLUMNS['kod_pocztowy']} as zip_code,
@@ -68,6 +71,9 @@ class DatabaseService:
                         'client_number': result.client_number,
                         'client_name': result.client_name,
                         'client_address': full_address,
+                        'thickness1': result.thickness1,
+                        'thickness2': result.thickness2,
+                        'thickness3': result.thickness3,
                     }
                 return None
         except Exception as e:
