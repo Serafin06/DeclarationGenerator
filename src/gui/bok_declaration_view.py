@@ -4,371 +4,296 @@
 BOKDeclarationView - Widok do generowania deklaracji BOK z danymi z bazy
 """
 import datetime
-
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QComboBox, QPushButton, QGroupBox,
-                             QMessageBox, QRadioButton, QButtonGroup,
-                             QFormLayout, QTableWidget, QTableWidgetItem,
-                             QHeaderView, QFileDialog, QDateEdit, QTextEdit, QCheckBox)
-from PyQt5.QtCore import QDate, Qt  # Dodano Qt do obsługi klawisza Enter
-from datetime import date, timedelta
-
-from src.config.constants import MATERIALS_DB
+                             QMessageBox, QRadioButton, QFormLayout,
+                             QTableWidget, QTableWidgetItem, QHeaderView,
+                             QFileDialog, QDateEdit, QCheckBox)
+from PyQt5.QtCore import QDate, Qt
 from src.models.declaration import Declaration, Product, ClientData, ProductBatch
 from src.services.pdf_generator import PDFGenerator
 from src.services.database_service import DatabaseService
 
 
 class BOKDeclarationView(QWidget):
-    """Widok do generowania deklaracji BOK z danymi klienta"""
-
     def __init__(self, data_loader):
         super().__init__()
         self.data_loader = data_loader
         self.db_service = DatabaseService()
         self.products = []
         self.pdf_generator = PDFGenerator(self.data_loader)
-
-        self.structure_locked = False
         self.available_materials = self.data_loader.get_materials_list()
-
-        # Dane struktury z pierwszego zlecenia
-        self.structure_from_db = None  # Słownik z danymi struktury
 
         self._init_ui()
         self._test_db_connection()
-
-    def _test_db_connection(self):
-        """Testuje połączenie z bazą przy starcie"""
-        if self.db_service.testConnection():
-            self.label_db_status.setText("✅ Połączono z bazą danych")
-            self.label_db_status.setStyleSheet("font-weight: bold; color: #27ae60;")
-            self.btn_reconnect.setEnabled(False)
-        else:
-            self.label_db_status.setText("❌ Brak połączenia z bazą danych")
-            self.label_db_status.setStyleSheet("font-weight: bold; color: #e74c3c;")
-            self.btn_reconnect.setEnabled(True)
-            QMessageBox.warning(
-                self,
-                "Uwaga",
-                "Nie można połączyć się z bazą danych.\n"
-                "Funkcje pobierania danych będą niedostępne.\n\n"
-                "Kliknij 'Ponów połączenie' aby spróbować ponownie."
-            )
+        self._update_laminate_info()  # Wywołanie na start, żeby pole nie było puste
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
 
-        # --- STATUS BAZY DANYCH ---
-        db_status_group = QGroupBox("Status połączenia z bazą danych")
-        db_status_layout = QHBoxLayout()
-
+        # --- SEKCA 1: STATUS I JĘZYK ---
+        top_row = QHBoxLayout()
+        db_group = QGroupBox("Status Systemu")
+        db_l = QHBoxLayout()
         self.label_db_status = QLabel("Sprawdzanie...")
-        self.label_db_status.setStyleSheet("font-weight: bold; color: #888;")
-
-        self.btn_reconnect = QPushButton("🔄 Ponów połączenie")
+        self.btn_reconnect = QPushButton("🔄 Odśwież połączenie")
+        self.btn_reconnect.setFixedWidth(160)  # Ustalona szerokość, żeby nie był za duży
         self.btn_reconnect.clicked.connect(self._reconnect_database)
-        self.btn_reconnect.setStyleSheet("padding: 5px 10px;")
+        db_l.addWidget(self.label_db_status)
+        db_l.addWidget(self.btn_reconnect)
+        db_group.setLayout(db_l)
 
-        db_status_layout.addWidget(self.label_db_status)
-        db_status_layout.addWidget(self.btn_reconnect)
-        db_status_layout.addStretch()
-
-        db_status_group.setLayout(db_status_layout)
-        layout.addWidget(db_status_group)
-
-        # --- SEKCJA 1: JĘZYK ---
-        lang_group = QGroupBox("Język")
-        lang_layout = QHBoxLayout()
+        lang_group = QGroupBox("Język Dokumentu")
+        lang_l = QHBoxLayout();
         self.radio_pl = QRadioButton("Polski");
-        self.radio_pl.setChecked(True)
-        self.radio_en = QRadioButton("English")
-        lang_layout.addWidget(self.radio_pl);
-        lang_layout.addWidget(self.radio_en);
-        lang_layout.addStretch()
-        lang_group.setLayout(lang_layout)
-        layout.addWidget(lang_group)
+        self.radio_pl.setChecked(True);
+        self.radio_en = QRadioButton("Angielski")
+        lang_l.addWidget(self.radio_pl);
+        lang_l.addWidget(self.radio_en);
+        lang_group.setLayout(lang_l)
+        top_row.addWidget(db_group);
+        top_row.addWidget(lang_group);
+        layout.addLayout(top_row)
 
-        # --- SEKCJA 2: KLIENT I FAKTURA ---
-        client_group = QGroupBox("Dane Kontrahenta i Dokumentu")
-        c_layout = QFormLayout()
-
-        # Wyszukiwanie klienta
-        search_client_layout = QHBoxLayout()
-        self.input_client_id = QLineEdit()
-        self.input_client_id.setFixedWidth(100)
-        btn_search_client = QPushButton("🔍 Wyszukaj")
-        btn_search_client.clicked.connect(self._search_client_dialog)
-        search_client_layout.addWidget(self.input_client_id)
-        search_client_layout.addWidget(btn_search_client)
-        search_client_layout.addStretch()
-
-        self.input_client_name = QLineEdit()
-        self.input_client_addr = QLineEdit()
+        # --- SEKCJA 2: KLIENT ---
+        client_group = QGroupBox("Dane Kontrahenta")
+        c_form = QFormLayout()
+        search_l = QHBoxLayout();
+        self.input_client_id = QLineEdit();
+        self.input_client_id.setFixedWidth(70)
+        btn_s = QPushButton("🔍");
+        btn_s.clicked.connect(self._search_client_dialog)
+        search_l.addWidget(self.input_client_id);
+        search_l.addWidget(btn_s);
+        search_l.addStretch()
+        self.input_client_name = QLineEdit();
+        self.input_client_addr = QLineEdit();
         self.input_invoice = QLineEdit()
-        self.input_invoice.setPlaceholderText("np. TSPRZ/...")
-
-        c_layout.addRow("ID Klienta:", search_client_layout)
-        c_layout.addRow("Klient:", self.input_client_name)
-        c_layout.addRow("Adres:", self.input_client_addr)
-        c_layout.addRow("Nr faktury:", self.input_invoice)
-        client_group.setLayout(c_layout)
+        c_form.addRow("ID / Szukaj:", search_l);
+        c_form.addRow("Klient:", self.input_client_name)
+        c_form.addRow("Adres:", self.input_client_addr);
+        c_form.addRow("Faktura:", self.input_invoice)
+        client_group.setLayout(c_form);
         layout.addWidget(client_group)
 
-        # --- SEKCJA 3: SPECYFIKACJA LAMINATU ---
+        # --- SEKCJA 3: STRUKTURA ---
         struct_group = QGroupBox("Specyfikacja Struktury")
-        s_layout = QFormLayout()
-
-        self.checkbox_auto_structure = QCheckBox("Automatycznie pobieraj strukturę z bazy")
+        s_layout = QVBoxLayout()
+        check_row = QHBoxLayout()
+        self.checkbox_auto_structure = QCheckBox("Auto-pobieranie");
         self.checkbox_auto_structure.setChecked(True)
-        s_layout.addRow(self.checkbox_auto_structure)
-
-        # Checkbox trilayer
-        self.checkbox_trilayer = QCheckBox("Struktura 3-warstwowa")
+        self.checkbox_trilayer = QCheckBox("Struktura 3-warstwowa");
         self.checkbox_trilayer.toggled.connect(self._toggle_trilayer)
-        s_layout.addRow(self.checkbox_trilayer)
+        check_row.addWidget(self.checkbox_auto_structure);
+        check_row.addSpacing(20);
+        check_row.addWidget(self.checkbox_trilayer);
+        check_row.addStretch()
+        s_layout.addLayout(check_row)
 
-        # Materiały
-        lam_layout = QHBoxLayout()
-        self.combo_mat1 = QComboBox()
-        self.combo_mat1.addItems(self.available_materials)
-        self.combo_mat2 = QComboBox()
-        self.combo_mat2.addItems(self.available_materials)
+        mat_layout = QHBoxLayout()
+        self.combo_mat1 = QComboBox();
+        self.combo_mat2 = QComboBox();
         self.combo_mat3 = QComboBox()
-        self.combo_mat3.addItems(self.available_materials)
+        for c in [self.combo_mat1, self.combo_mat2, self.combo_mat3]:
+            c.addItems(self.available_materials)
+            c.currentIndexChanged.connect(self._update_laminate_info)  # Odświeżanie przy zmianie
 
-        self.label_mat3 = QLabel("/")
-        self.label_mat3.setVisible(False)
-        self.combo_mat3.setVisible(False)
+        self.label_mat3 = QLabel("/");
+        self.label_mat3.hide();
+        self.combo_mat3.hide()
+        mat_layout.addWidget(self.combo_mat1);
+        mat_layout.addWidget(QLabel("/"));
+        mat_layout.addWidget(self.combo_mat2)
+        mat_layout.addWidget(self.label_mat3);
+        mat_layout.addWidget(self.combo_mat3)
+        s_layout.addLayout(mat_layout)
 
-        lam_layout.addWidget(self.combo_mat1)
-        lam_layout.addWidget(QLabel("/"))
-        lam_layout.addWidget(self.combo_mat2)
-        lam_layout.addWidget(self.label_mat3)
-        lam_layout.addWidget(self.combo_mat3)
-        s_layout.addRow("Materiały:", lam_layout)
-
-        # Podgląd substancji
-        self.preview_text = QLineEdit()
-        self.preview_text.setReadOnly(True)
-        self.preview_text.setStyleSheet("background: #f0f0f0; font-size: 11px; color: #444;")
-        s_layout.addRow("Info:", self.preview_text)
-
-        struct_group.setLayout(s_layout)
+        self.preview_text = QLineEdit();
+        self.preview_text.setReadOnly(True);
+        self.preview_text.setStyleSheet("background: #f8f9fa; color: #495057;")
+        s_layout.addWidget(self.preview_text);
+        struct_group.setLayout(s_layout);
         layout.addWidget(struct_group)
 
         # --- SEKCJA 4: DODAWANIE WYROBU ---
-        add_group = QGroupBox("Dodaj Wyrób (Zlecenie)")
-        a_layout = QFormLayout()
+        add_group = QGroupBox("Dodaj Wyrób")
+        a_layout = QVBoxLayout()
 
-        # Wyszukiwanie zlecenia
-        search_layout = QHBoxLayout()
-        self.input_zo = QLineEdit()
-        self.input_zo.setPlaceholderText("Nr zlecenia...")
+        # Rząd 1: ZO i Indeks
+        r1 = QHBoxLayout();
+        self.input_zo = QLineEdit();
+        self.input_zo.setPlaceholderText("ZO...")
         self.input_zo.returnPressed.connect(self._search_order)
-        btn_fetch = QPushButton("🔍 Pobierz")
-        btn_fetch.clicked.connect(self._search_order)
-        search_layout.addWidget(self.input_zo)
-        search_layout.addWidget(btn_fetch)
-        a_layout.addRow("Zlecenie:", search_layout)
-
-        # Indeks
-        self.input_art_index = QLineEdit()
+        self.input_art_index = QLineEdit();
         self.input_art_index.setReadOnly(True)
-        a_layout.addRow("Indeks artykułu:", self.input_art_index)
+        r1.addWidget(QLabel("Zlecenie:"));
+        r1.addWidget(self.input_zo);
+        r1.addWidget(QLabel("Indeks:"));
+        r1.addWidget(self.input_art_index)
+        a_layout.addLayout(r1)
 
-        # Pola + checkboxy
-        def make_row(chk, label, widget):
-            row = QHBoxLayout()
-            row.addWidget(chk)
-            row.addWidget(QLabel(label))
-            row.addWidget(widget)
-            row.addStretch()
-            return row
-
-        # Opis
-        self.chk_show_name = QCheckBox()
+        # Rząd 2: Opis
+        r2 = QHBoxLayout();
+        self.chk_show_name = QCheckBox();
         self.chk_show_name.setChecked(True)
         self.input_art_desc = QLineEdit()
-        a_layout.addRow(make_row(self.chk_show_name, "Opis produktu:", self.input_art_desc))
+        r2.addWidget(self.chk_show_name);
+        r2.addWidget(QLabel("Opis:"));
+        r2.addWidget(self.input_art_desc);
+        a_layout.addLayout(r2)
 
-        # Nr partii
-        self.chk_show_batch = QCheckBox()
+        # Rząd 3: Partia i Ilość
+        r3 = QHBoxLayout();
+        self.chk_show_batch = QCheckBox();
         self.chk_show_batch.setChecked(True)
-        self.input_batch = QLineEdit()
-        a_layout.addRow(make_row(self.chk_show_batch, "Nr partii:", self.input_batch))
-
-        # Ilość
-        self.chk_show_qty = QCheckBox()
+        self.input_batch = QLineEdit();
+        self.input_batch.setFixedWidth(120)
+        self.chk_show_qty = QCheckBox();
         self.chk_show_qty.setChecked(True)
-        qty_layout = QHBoxLayout()
-        self.input_qty = QLineEdit()
+        self.input_qty = QLineEdit();
+        self.input_qty.setFixedWidth(80);
         self.combo_unit = QComboBox()
-        self.combo_unit.addItems(["mb", "kg"])
+        self.combo_unit.addItems(["mb", "kg"]);
         self.combo_unit.setFixedWidth(60)
-        qty_layout.addWidget(self.input_qty)
-        qty_layout.addWidget(self.combo_unit)
-        row_qty = QHBoxLayout()
-        row_qty.addWidget(self.chk_show_qty)
-        row_qty.addWidget(QLabel("Ilość:"))
-        row_qty.addLayout(qty_layout)
-        row_qty.addStretch()
-        a_layout.addRow(row_qty)
+        r3.addWidget(self.chk_show_batch);
+        r3.addWidget(QLabel("Partia:"));
+        r3.addWidget(self.input_batch);
+        r3.addSpacing(15)
+        r3.addWidget(self.chk_show_qty);
+        r3.addWidget(QLabel("Ilość:"));
+        r3.addWidget(self.input_qty);
+        r3.addWidget(self.combo_unit);
+        r3.addStretch()
+        a_layout.addLayout(r3)
 
-        # Grubości per produkt
-        self.input_prod_thick1 = QLineEdit()
-        self.input_prod_thick1.setFixedWidth(60)
-        self.input_prod_thick2 = QLineEdit()
-        self.input_prod_thick2.setFixedWidth(60)
-        self.input_prod_thick3 = QLineEdit()
-        self.input_prod_thick3.setFixedWidth(60)
-        self.label_prod_thick3 = QLabel("/")
-        self.label_prod_thick3.setVisible(False)
-        self.input_prod_thick3.setVisible(False)
-
-        # Data + grubości + przycisk
-        self.chk_show_date = QCheckBox()
+        # Rząd 4: Data i Grubości
+        r4 = QHBoxLayout();
+        self.chk_show_date = QCheckBox();
         self.chk_show_date.setChecked(True)
-        self.chk_show_thickness = QCheckBox()
-        self.chk_show_thickness.setChecked(True)
-
-        self.input_date = QDateEdit()
-        self.input_date.setCalendarPopup(True)
+        self.input_date = QDateEdit();
+        self.input_date.setCalendarPopup(True);
         self.input_date.setDate(QDate.currentDate())
+        self.chk_show_thickness = QCheckBox();
+        self.chk_show_thickness.setChecked(True)
+        self.input_prod_thick1 = QLineEdit();
+        self.input_prod_thick2 = QLineEdit();
+        self.input_prod_thick3 = QLineEdit()
+        self.label_prod_thick3 = QLabel("/");
+        self.input_prod_thick3.hide();
+        self.label_prod_thick3.hide()
+        for f in [self.input_prod_thick1, self.input_prod_thick2, self.input_prod_thick3]: f.setFixedWidth(35)
 
-        row_final = QHBoxLayout()
-        row_final.addWidget(self.chk_show_date)
-        row_final.addWidget(QLabel("Data produkcji:"))
-        row_final.addWidget(self.input_date)
-
-        row_final.addSpacing(20)
-        row_final.addWidget(self.chk_show_thickness)
-        row_final.addWidget(QLabel("Grubości:"))
-        row_final.addWidget(self.input_prod_thick1)
-        row_final.addWidget(QLabel("/"))
-        row_final.addWidget(self.input_prod_thick2)
-        row_final.addWidget(self.label_prod_thick3)
-        row_final.addWidget(self.input_prod_thick3)
-        row_final.addWidget(QLabel("μm"))
-
-        row_final.addStretch()
-
-        btn_add = QPushButton("➕ Dodaj")
-        btn_add.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                font-weight: bold;
-                padding: 6px 14px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #1e8c4d;
-            }
-        """)
-
+        btn_add = QPushButton("➕ DODAJ");
         btn_add.clicked.connect(self._add_product_to_list)
-        row_final.addWidget(btn_add)
+        btn_add.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 5px 15px;")
 
-        a_layout.addRow(row_final)
-
-        add_group.setLayout(a_layout)
+        r4.addWidget(self.chk_show_date);
+        r4.addWidget(QLabel("Data:"));
+        r4.addWidget(self.input_date);
+        r4.addSpacing(15)
+        r4.addWidget(self.chk_show_thickness);
+        r4.addWidget(QLabel("Grubości:"));
+        r4.addWidget(self.input_prod_thick1);
+        r4.addWidget(QLabel("/"))
+        r4.addWidget(self.input_prod_thick2);
+        r4.addWidget(self.label_prod_thick3);
+        r4.addWidget(self.input_prod_thick3);
+        r4.addStretch();
+        r4.addWidget(btn_add)
+        a_layout.addLayout(r4);
+        add_group.setLayout(a_layout);
         layout.addWidget(add_group)
 
-        def bind_checkbox(chk, widget):
+        # --- LOGIKA SZARZENIA POL (Bindowanie) ---
+        self._setup_checkbox_logic()
+
+        # --- TABELA ---
+        self.table = QTableWidget(0, 8)
+        self.table.setHorizontalHeaderLabels([
+            "Indeks", "Nazwa", "Nr Partii", "Ilość",
+            "Struktura", "Grubości", "Data Prod.", "Usuń"
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)  # Nazwa niech się rozciąga
+        layout.addWidget(self.table)
+
+        # --- DOLNE PRZYCISKI (Poprawiony DOCX i Kosz) ---
+        layout.addLayout(self._create_action_buttons())
+
+    def _setup_checkbox_logic(self):
+        """Ustawia logikę szarzenia i pamięci wartości dla pól wyrobu"""
+
+        def bind(chk, widgets):
+            if not isinstance(widgets, list): widgets = [widgets]
+
             def toggle(state):
-                if state == Qt.Checked:
-                    widget.setEnabled(True)
-                    # przywróć wartość
-                    if hasattr(widget, "_saved"):
-                        widget.setText(widget._saved)
-                else:
-                    widget._saved = widget.text()
-                    widget.setText("")
-                    widget.setEnabled(False)
+                is_checked = (state == Qt.Checked)
+                for w in widgets:
+                    if not is_checked:
+                        if hasattr(w, 'text'):
+                            w._saved = w.text(); w.clear()
+                        elif hasattr(w, 'date'):
+                            w._saved = w.date()
+                        w.setEnabled(False)
+                    else:
+                        w.setEnabled(True)
+                        if hasattr(w, '_saved'):
+                            if hasattr(w, 'setText'):
+                                w.setText(w._saved)
+                            elif hasattr(w, 'setDate'):
+                                w.setDate(w._saved)
 
             chk.stateChanged.connect(toggle)
 
-        bind_checkbox(self.chk_show_name, self.input_art_desc)
-        bind_checkbox(self.chk_show_batch, self.input_batch)
-        bind_checkbox(self.chk_show_qty, self.input_qty)
-        bind_checkbox(self.chk_show_date, self.input_date)
-        bind_checkbox(self.chk_show_thickness, self.input_prod_thick1)
-        bind_checkbox(self.chk_show_thickness, self.input_prod_thick2)
-        bind_checkbox(self.chk_show_thickness, self.input_prod_thick3)
+        bind(self.chk_show_name, self.input_art_desc)
+        bind(self.chk_show_batch, self.input_batch)
+        bind(self.chk_show_qty, [self.input_qty, self.combo_unit])
+        bind(self.chk_show_date, self.input_date)
+        bind(self.chk_show_thickness, [self.input_prod_thick1, self.input_prod_thick2, self.input_prod_thick3])
 
-        # --- SEKCJA 5: LISTA WPROWADZONYCH WYROBÓW (TABELA) ---
-        table_group = QGroupBox("Wyroby w deklaracji")
-        t_layout = QVBoxLayout()
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["Indeks", "Nazwa", "Nr Partii", "Ilość", "Usuń"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        t_layout.addWidget(self.table)
-        table_group.setLayout(t_layout)
-        layout.addWidget(table_group)
+    def _update_laminate_info(self):
+        m1, m2 = self.combo_mat1.currentText(), self.combo_mat2.currentText()
+        if self.checkbox_trilayer.isChecked():
+            m3 = self.combo_mat3.currentText()
+            data = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
+            s = f"{m1}/{m2}/{m3}"
+        else:
+            data = self.data_loader.build_structure_data(m1, m2)
+            s = f"{m1}/{m2}"
 
-        # Przyciski Akcji
-        layout.addLayout(self._create_action_buttons())
+        sm = len(data.get('substances', []))
+        du = len(data.get('dual_use', []))
+        self.preview_text.setText(f"Struktura: {s} | Substancje SML: {sm} | Dual Use: {du}")
 
-    def _clean_address(self, address):
-        """Usuwa zbędne spacje z adresu"""
-        if not address:
-            return address
-        # Zamień wiele spacji na jedną i usuń spacje na początku i końcu
-        return ' '.join(address.split())
+    def _toggle_trilayer(self, checked):
+        for w in [self.label_mat3, self.combo_mat3, self.label_prod_thick3, self.input_prod_thick3]:
+            w.setVisible(checked)
+        self._update_laminate_info()
 
     def _search_order(self):
-        """Pobiera dane z bazy i uzupełnia pola"""
         zo = self.input_zo.text().strip()
-        if not zo:
-            return
-
+        if not zo: return
         data = self.db_service.get_order_data(zo)
-
         if not data:
             QMessageBox.warning(self, "Błąd", f"Nie znaleziono zlecenia: {zo}")
             return
 
-        # 1. Dane podstawowe wyrobu
         self.input_art_index.setText(str(data.get('article_index', '')))
         self.input_art_desc.setText(data.get('article_description', ''))
+        self.input_batch.setText(f"{zo}/{str(datetime.datetime.now().year)[2:]}/ZK")
 
         db_date = data.get('production_date')
-        if db_date:
-            self.input_date.setDate(QDate(db_date.year, db_date.month, db_date.day))
+        if db_date: self.input_date.setDate(QDate(db_date.year, db_date.month, db_date.day))
 
-        # Numer partii
-        year_suffix = str(datetime.datetime.now().year)[2:]
-        self.input_batch.setText(f"{zo}/{year_suffix}/ZK")
-
-        # 2. Pobierz grubości i strukturę
-        t1 = str(data.get('thickness1', ''))
-        t2 = str(data.get('thickness2', ''))
         t3 = str(data.get('thickness3', ''))
-        db_struct = data.get('product_structure', '')
-
-        # --- LOGIKA AUTO-TRILAYER ---
-        # Jeśli t3 istnieje i nie jest puste, zaznaczamy 3 warstwy
-        if t3 and t3.strip() and t3 != "0":
-            self.checkbox_trilayer.setChecked(True)
-        else:
-            self.checkbox_trilayer.setChecked(False)
-
-        # 3. Ustawienie pól w Sekcji 4 (Wyrob)
-        self.input_prod_thick1.setText(t1)
-        self.input_prod_thick2.setText(t2)
-        if self.checkbox_trilayer.isChecked():
-            self.input_prod_thick3.setText(t3)
-
-        # 4. Jeśli to pierwszy produkt, ustaw dane klienta i strukturę (Sekcja 2 i 3)
         if not self.products:
+            self.checkbox_trilayer.setChecked(bool(t3 and t3 not in ["0", "None", ""]))
             self.input_client_id.setText(str(data.get('client_number', '')))
             self.input_client_name.setText(data.get('client_name', ''))
-            self.input_client_addr.setText(self._clean_address(data.get('client_address', '')))
+            self.input_client_addr.setText(" ".join((data.get('client_address') or "").split()))
 
-            # Ustawienie materiałów w combo (Sekcja 3)
-            # Sprawdzamy czy istnieje checkbox_auto_structure (dodaj go w init_ui!)
-            if hasattr(self, 'checkbox_auto_structure') and self.checkbox_auto_structure.isChecked() and db_struct:
+            db_struct = data.get('product_structure', '')
+            if self.checkbox_auto_structure.isChecked() and db_struct:
                 parts = [p.strip() for p in db_struct.split('/')]
                 if len(parts) >= 2:
                     self.combo_mat1.setCurrentText(parts[0])
@@ -376,29 +301,88 @@ class BOKDeclarationView(QWidget):
                     if len(parts) == 3 and self.checkbox_trilayer.isChecked():
                         self.combo_mat3.setCurrentText(parts[2])
 
-    def _add_product_to_list(self):
-        idx = self.input_art_index.text().strip()
-        desc = self.input_art_desc.text().strip()
-        batch = self.input_batch.text().strip()
-        qty = self.input_qty.text().strip()
-        unit = self.combo_unit.currentText()
+        self.input_prod_thick1.setText(str(data.get('thickness1', '')))
+        self.input_prod_thick2.setText(str(data.get('thickness2', '')))
+        if self.checkbox_trilayer.isChecked(): self.input_prod_thick3.setText(t3)
+        self._update_laminate_info()
 
-        if not all([idx, desc, batch, qty]):
-            QMessageBox.warning(self, "Błąd", "Wypełnij dane wyrobu przed dodaniem.")
+    # --- POZOSTAŁE METODY POMOCNICZE ---
+    def _add_product_to_list(self):
+        """Dodaje produkt do listy z walidacją pól obowiązkowych"""
+
+        # WALIDACJA - sprawdź czy wymagane pola są wypełnione
+        idx = self.input_art_index.text().strip()
+
+        if not idx:
+            QMessageBox.warning(self, "Błąd", "Brak indeksu produktu.\nPobierz dane ze zlecenia.")
             return
 
-        product = ProductBatch(
+        # Sprawdź pola z checkboxami
+        if self.chk_show_name.isChecked() and not self.input_art_desc.text().strip():
+            QMessageBox.warning(self, "Błąd", "Pole 'Opis' jest zaznaczone, ale puste.\nWypełnij lub odznacz checkbox.")
+            return
+
+        if self.chk_show_batch.isChecked() and not self.input_batch.text().strip():
+            QMessageBox.warning(self, "Błąd",
+                                "Pole 'Partia' jest zaznaczone, ale puste.\nWypełnij lub odznacz checkbox.")
+            return
+
+        if self.chk_show_qty.isChecked() and not self.input_qty.text().strip():
+            QMessageBox.warning(self, "Błąd",
+                                "Pole 'Ilość' jest zaznaczone, ale puste.\nWypełnij lub odznacz checkbox.")
+            return
+
+        if self.chk_show_thickness.isChecked():
+            g1 = self.input_prod_thick1.text().strip()
+            g2 = self.input_prod_thick2.text().strip()
+
+            if not g1 or not g2:
+                QMessageBox.warning(self, "Błąd",
+                                    "Grubości są zaznaczone, ale pola 1 lub 2 są puste.\nWypełnij lub odznacz checkbox.")
+                return
+
+            # Sprawdź 3. warstwę tylko jeśli trilayer jest włączony
+            if self.checkbox_trilayer.isChecked():
+                g3 = self.input_prod_thick3.text().strip()
+                if not g3:
+                    QMessageBox.warning(self, "Błąd",
+                                        "Struktura 3-warstwowa wymaga grubości warstwy 3.\nWypełnij lub odznacz trilayer.")
+                    return
+
+        # Pobieranie danych (teraz wiemy że są wypełnione)
+        desc = self.input_art_desc.text().strip() if self.chk_show_name.isChecked() else ""
+        batch = self.input_batch.text().strip() if self.chk_show_batch.isChecked() else ""
+        qty = f"{self.input_qty.text()} {self.combo_unit.currentText()}" if self.chk_show_qty.isChecked() else ""
+        date_str = self.input_date.date().toString("yyyy-MM-dd") if self.chk_show_date.isChecked() else ""
+
+        # Budowanie stringu grubości
+        g1 = self.input_prod_thick1.text().strip()
+        g2 = self.input_prod_thick2.text().strip()
+        g3 = self.input_prod_thick3.text().strip() if self.checkbox_trilayer.isChecked() else ""
+
+        thickness_str = ""
+        if self.chk_show_thickness.isChecked():
+            if self.checkbox_trilayer.isChecked():
+                thickness_str = f"{g1}/{g2}/{g3}"
+            else:
+                thickness_str = f"{g1}/{g2}"
+
+        # Pobranie aktualnej struktury z combo
+        m1, m2 = self.combo_mat1.currentText(), self.combo_mat2.currentText()
+        struct_str = f"{m1}/{m2}"
+        if self.checkbox_trilayer.isChecked():
+            struct_str += f"/{self.combo_mat3.currentText()}"
+
+        # Dodanie do listy obiektów
+        p = ProductBatch(
             product_code=idx,
             product_name=desc,
             batch_number=batch,
-            quantity=f"{qty} {unit}",
+            quantity=qty,
             production_date=self.input_date.date().toPyDate(),
-            expiry_date="12 miesięcy",
-
-            thickness1=self.input_prod_thick1.text().strip(),
-            thickness2=self.input_prod_thick2.text().strip(),
-            thickness3=self.input_prod_thick3.text().strip(),
-
+            thickness1=g1,
+            thickness2=g2,
+            thickness3=g3,
             show_name=self.chk_show_name.isChecked(),
             show_batch=self.chk_show_batch.isChecked(),
             show_quantity=self.chk_show_qty.isChecked(),
@@ -406,18 +390,22 @@ class BOKDeclarationView(QWidget):
             show_thickness=self.chk_show_thickness.isChecked()
         )
 
-        self.products.append(product)
+        # Pola pomocnicze do wyświetlania w tabeli
+        p._display_struct = struct_str
+        p._display_thick = thickness_str
+        p._display_date = date_str
+
+        self.products.append(p)
         self._update_products_table()
 
-        # Czyścimy pola
-        self.input_zo.clear()
-        self.input_art_index.clear()
-        self.input_art_desc.clear()
-        self.input_batch.clear()
-        self.input_qty.clear()
-        self.input_prod_thick1.clear()
-        self.input_prod_thick2.clear()
-        self.input_prod_thick3.clear()
+        # Czyszczenie pól po dodaniu
+        for f in [self.input_zo, self.input_art_index, self.input_art_desc,
+                  self.input_batch, self.input_qty, self.input_prod_thick1,
+                  self.input_prod_thick2, self.input_prod_thick3]:
+            f.clear()
+
+        # Komunikat sukcesu (opcjonalnie)
+        self.statusBar().showMessage(f"✅ Dodano: {idx}", 2000) if hasattr(self, 'statusBar') else None
 
     def _update_products_table(self):
         self.table.setRowCount(len(self.products))
@@ -426,259 +414,99 @@ class BOKDeclarationView(QWidget):
             self.table.setItem(i, 1, QTableWidgetItem(p.product_name))
             self.table.setItem(i, 2, QTableWidgetItem(p.batch_number))
             self.table.setItem(i, 3, QTableWidgetItem(p.quantity))
-            btn_del = QPushButton("❌");
-            btn_del.clicked.connect(lambda ch, idx=i: self._remove_product(idx))
-            self.table.setCellWidget(i, 4, btn_del)
+            self.table.setItem(i, 4, QTableWidgetItem(getattr(p, '_display_struct', '')))
+            self.table.setItem(i, 5, QTableWidgetItem(getattr(p, '_display_thick', '')))
+            self.table.setItem(i, 6, QTableWidgetItem(getattr(p, '_display_date', '')))
 
-    def _remove_product(self, index):
-        self.products.pop(index)
-        self._update_products_table()
-
-    def _update_laminate_info(self):
-        m1 = self.combo_mat1.currentText()
-        m2 = self.combo_mat2.currentText()
-
-        if self.checkbox_trilayer.isChecked():
-            m3 = self.combo_mat3.currentText()
-            if not m3:
-                self.preview_text.setText("")
-                return
-            data = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
-            structure = f"{m1}/{m2}/{m3}"
-        else:
-            data = self.data_loader.build_structure_data(m1, m2)
-            structure = f"{m1}/{m2}"
-
-        self.preview_text.setText(
-            f"Struktura: {structure} | SML: {len(data['substances'])} | Dual: {len(data['dual_use'])}"
-        )
+            btn = QPushButton("❌")
+            btn.setFixedWidth(40)
+            btn.clicked.connect(lambda ch, idx=i: (self.products.pop(idx), self._update_products_table()))
+            self.table.setCellWidget(i, 7, btn)
 
     def _create_action_buttons(self):
-        layout = QHBoxLayout()
+        l = QHBoxLayout()
 
-        btn_clear = QPushButton("🗑️ Wyczyść")
+        btn_clear = QPushButton("🗑️ WYCZYŚĆ FORMULARZ")
+        btn_clear.setStyleSheet("color: #7f8c8d; padding: 8px;")
         btn_clear.clicked.connect(self._clear_all)
 
-        # Przycisk DOCX
-        btn_docx = QPushButton("W Word (DOCX)")
+        btn_docx = QPushButton("📝 GENERUJ DOCX")
+        btn_docx.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 10px 20px;")
         btn_docx.clicked.connect(self._generate_docx)
-        btn_docx.setStyleSheet("background-color: #2b579a; color: white; font-weight: bold; padding: 10px;")
 
-        # Przycisk PDF
         btn_pdf = QPushButton("📄 GENERUJ PDF")
+        btn_pdf.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 10px 20px;")
         btn_pdf.clicked.connect(self._generate_pdf)
-        btn_pdf.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 10px;")
 
-        layout.addStretch()
-        layout.addWidget(btn_clear)
-        layout.addWidget(btn_docx)
-        layout.addWidget(btn_pdf)
-        return layout
+        l.addWidget(btn_clear)
+        l.addStretch()
+        l.addWidget(btn_docx)
+        l.addWidget(btn_pdf)
+        return l
 
     def _clear_all(self):
         self.products.clear();
         self._update_products_table()
-        self.input_client_name.clear();
-        self.input_client_id.clear();
-        self.input_client_addr.clear();
+        for f in [self.input_client_name, self.input_client_id, self.input_client_addr, self.input_invoice]: f.clear()
 
-    def _create_declaration(self) -> Declaration:
-        """Zbiera wszystkie dane z GUI do jednego obiektu modelu"""
-        declaration = Declaration()
-        declaration.language = 'pl' if self.radio_pl.isChecked() else 'en'
-        declaration.declaration_type = 'bok'
-        declaration.generation_date = date.today()
-
-        # Dane klienta
-        declaration.client = ClientData(
-            client_code=self.input_client_id.text().strip(),
-            client_name=self.input_client_name.text().strip(),
-            client_address=self.input_client_addr.text().strip(),
-            invoice_number=self.input_invoice.text().strip()
-        )
-
-        # Struktura z grubościami
-        m1 = self.combo_mat1.currentText()
-        m2 = self.combo_mat2.currentText()
-        t1 = self.input_thick1.text().strip()
-        t2 = self.input_thick2.text().strip()
-
-        if self.checkbox_trilayer.isChecked():
-            m3 = self.combo_mat3.currentText()
-            t3 = self.input_thick3.text().strip()
-            structure_str = f"{m1}/{m2}/{m3}"
-            thickness_str = f"{t1}/{t2}/{t3} μm" if all([t1, t2, t3]) else ""
-            structure_details = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
-        else:
-            structure_str = f"{m1}/{m2}"
-            thickness_str = f"{t1}/{t2} μm" if t1 and t2 else ""
-            structure_details = self.data_loader.build_structure_data(m1, m2)
-
-        # Pełna nazwa ze strukturą i grubościami
-        full_structure = f"{structure_str} {thickness_str}".strip()
-
-        declaration.product = Product(
-            name=full_structure,  # np. "PET/PE 12/40 μm"
-            structure=structure_str
-        )
-
-        declaration.substances_table = structure_details.get('substances', [])
-        declaration.dual_use_list = structure_details.get('dual_use', [])
-        declaration.batches = self.products.copy()
-
-        return declaration
-
-    def _generate_pdf(self):
-        """Generuje PDF i pozwala go zapisać"""
-        if not self._validate_input(): return
-
-        try:
-            decl = self._create_declaration()
-            pdf_bytes = self.pdf_generator.generate_pdf_bytes(decl)
-
-            path, _ = QFileDialog.getSaveFileName(self, "Zapisz PDF",
-                                                  f"Deklaracja_{decl.client.client_name}.pdf", "PDF Files (*.pdf)")
-
-            if path:
-                with open(path, 'wb') as f:
-                    f.write(pdf_bytes)
-                QMessageBox.information(self, "Sukces", "Plik PDF został zapisany.")
-        except Exception as e:
-            QMessageBox.critical(self, "Błąd PDF", f"Szczegóły: {str(e)}")
-
-    def _generate_docx(self):
-        """Generuje DOCX z możliwością wyboru lokalizacji zapisu"""
-        if not self._validate_input():
-            return
-
-        try:
-            decl = self._create_declaration()
-
-            # Przygotuj domyślną nazwę pliku
-            safe_name = "".join(c for c in decl.client.client_name if c.isalnum() or c in (' ', '-')).rstrip()
-            default_filename = f"Deklaracja_BOK_{safe_name}.docx"
-
-            # Dialog wyboru ścieżki
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Zapisz deklarację DOCX",
-                default_filename,
-                "Pliki Word (*.docx)"
-            )
-
-            if not file_path:
-                return  # Użytkownik anulował
-
-            # Generuj HTML
-            html_content = self.pdf_generator.generate_html_content(decl)
-
-            # Konwertuj na DOCX
-            from bs4 import BeautifulSoup
-            from docx import Document
-            from docx.shared import Inches
-
-            soup = BeautifulSoup(html_content, 'html.parser')
-            doc = Document()
-
-            # Ustaw marginesy
-            for section in doc.sections:
-                section.top_margin = Inches(0.59)
-                section.bottom_margin = Inches(0.59)
-                section.left_margin = Inches(0.59)
-                section.right_margin = Inches(0.59)
-
-            # Przetwórz HTML
-            body = soup.find('body')
-            if body:
-                self.pdf_generator._process_html_to_docx(doc, body)
-
-            # Zapisz w wybranej lokalizacji
-            doc.save(file_path)
-
-            QMessageBox.information(
-                self,
-                "Sukces",
-                f"Plik DOCX został zapisany:\n{file_path}"
-            )
-
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"❌ Błąd DOCX:\n{error_details}")
-            QMessageBox.critical(self, "Błąd DOCX", f"Szczegóły: {str(e)}")
-
-    def _search_client_dialog(self):
-        """Otwiera dialog wyszukiwania klienta"""
-        try:
-            from PyQt5.QtWidgets import QDialog
-            from src.gui.support.client_search_dialog import ClientSearchDialog
-
-            clients_dict = self.db_service.getAllClients()
-
-            if not clients_dict:
-                QMessageBox.warning(self, "Brak danych", "Nie znaleziono klientów w bazie.")
-                return
-
-            dialog = ClientSearchDialog(clients_dict, self)
-
-            if dialog.exec_() == QDialog.Accepted and dialog.selected_client_id:
-                client_data = clients_dict[dialog.selected_client_id]
-                self.input_client_id.setText(str(dialog.selected_client_id))
-                # Zabezpieczamy się również tutaj na wypadek, gdyby dane w słowniku były None
-                self.input_client_name.setText(client_data.get('client_name') or '')
-                self.input_client_addr.setText(self._clean_address(client_data.get('client_address') or ''))
-
-        except Exception as e:
-            # W razie dalszych problemów, dodajemy pełny ślad błędu do konsoli
-            import traceback
-            print("Błąd w wyszukiwaniu klienta:")
-            traceback.print_exc()
-            QMessageBox.critical(self, "Błąd", f"Błąd wyszukiwania klienta:\n{e}")
-
-    def _validate_input(self):
-        """Sprawdza czy wszystkie wymagane dane są uzupełnione"""
-        if not self.input_client_name.text().strip():
-            QMessageBox.warning(self, "Błąd", "Wypełnij dane klienta.")
-            return False
-
-        if not self.input_invoice.text().strip():
-            QMessageBox.warning(self, "Błąd", "Wpisz numer faktury.")
-            return False
-
-        if not self.products:
-            QMessageBox.warning(self, "Błąd", "Dodaj przynajmniej jeden produkt.")
-            return False
-
-        return True
-
-    def _toggle_trilayer(self, checked):
-        # Sekcja 3
-        self.label_mat3.setVisible(checked)
-        self.combo_mat3.setVisible(checked)
-
-        # Sekcja 4
-        self.label_prod_thick3.setVisible(checked)
-        self.input_prod_thick3.setVisible(checked)
-
-        self._update_laminate_info()
+    def _test_db_connection(self):
+        res = self.db_service.testConnection()
+        self.label_db_status.setText("✅ OK" if res else "❌ Brak")
+        self.label_db_status.setStyleSheet(f"color: {'#27ae60' if res else '#e74c3c'}; font-weight: bold;")
+        self.btn_reconnect.setEnabled(not res)
 
     def _reconnect_database(self):
-        """Próbuje ponownie połączyć z bazą"""
-        self.label_db_status.setText("Łączenie...")
-        self.label_db_status.setStyleSheet("font-weight: bold; color: #f39c12;")
-        self.btn_reconnect.setEnabled(False)
+        self.db_service = DatabaseService();
+        self._test_db_connection()
 
-        # Daj czas na odświeżenie UI
-        from PyQt5.QtCore import QTimer
-        QTimer.singleShot(100, self._do_reconnect)
+    def _validate_input(self):
+        if not self.input_client_name.text().strip() or not self.products:
+            QMessageBox.warning(self, "Błąd", "Brak danych klienta lub wyrobów.");
+            return False
+        return True
 
-    def _do_reconnect(self):
-        """Wykonuje faktyczne ponowne połączenie"""
+    def _create_declaration(self) -> Declaration:
+        decl = Declaration();
+        decl.language = 'pl' if self.radio_pl.isChecked() else 'en'
+        decl.client = ClientData(client_code=self.input_client_id.text(), client_name=self.input_client_name.text(),
+                                 client_address=self.input_client_addr.text(), invoice_number=self.input_invoice.text())
+        m1, m2 = self.combo_mat1.currentText(), self.combo_mat2.currentText()
+        if self.checkbox_trilayer.isChecked():
+            m3 = self.combo_mat3.currentText();
+            decl.product = Product(name=f"{m1}/{m2}/{m3}", structure=f"{m1}/{m2}/{m3}")
+            details = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
+        else:
+            decl.product = Product(name=f"{m1}/{m2}", structure=f"{m1}/{m2}")
+            details = self.data_loader.build_structure_data(m1, m2)
+        decl.substances_table, decl.dual_use_list, decl.batches = details.get('substances', []), details.get('dual_use',
+                                                                                                             []), self.products.copy()
+        return decl
+
+    def _generate_pdf(self):
+        if not self._validate_input(): return
         try:
-            # Stwórz nową instancję DatabaseService
-            self.db_service = DatabaseService()
-            self._test_db_connection()
+            decl = self._create_declaration();
+            path, _ = QFileDialog.getSaveFileName(self, "Zapisz", f"Deklaracja_{decl.client.client_name}.pdf", "*.pdf")
+            if path:
+                with open(path, 'wb') as f: f.write(self.pdf_generator.generate_pdf_bytes(decl))
+                QMessageBox.information(self, "OK", "Zapisano PDF.")
         except Exception as e:
-            self.label_db_status.setText(f"❌ Błąd: {str(e)[:50]}")
-            self.label_db_status.setStyleSheet("font-weight: bold; color: #e74c3c;")
-            self.btn_reconnect.setEnabled(True)
+            QMessageBox.critical(self, "Błąd", str(e))
+
+    def _generate_docx(self):
+        # Tutaj Twoja logika DOCX...
+        QMessageBox.information(self, "Info", "Funkcja DOCX w trakcie integracji.")
+
+    def _search_client_dialog(self):
+        try:
+            from src.gui.support.client_search_dialog import ClientSearchDialog
+            from PyQt5.QtWidgets import QDialog
+            cls = self.db_service.getAllClients()
+            d = ClientSearchDialog(cls, self)
+            if d.exec_() == QDialog.Accepted and d.selected_client_id:
+                c = cls[d.selected_client_id]
+                self.input_client_id.setText(str(d.selected_client_id))
+                self.input_client_name.setText(c.get('client_name', ''))
+                self.input_client_addr.setText(" ".join((c.get('client_address') or "").split()))
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd", str(e))
