@@ -81,7 +81,7 @@ class Declaration:
 
     def to_template_dict(self) -> Dict:
         """Konwertuje model do słownika dla szablonu Jinja2"""
-        return {
+        context = {
             'generation_date': self.generation_date.strftime('%d.%m.%Y'),
             'product': {
                 'name': self.product.name,
@@ -96,23 +96,52 @@ class Declaration:
                 'plant_name': self.producer.plant_name,
                 'plant_address': self.producer.plant_address
             },
-            'client': {
+            'substances_table': self.substances_table,
+            'dual_use_list': self.dual_use_list
+        }
+
+        # Dane BOK
+        if self.declaration_type == 'bok':
+            context['client'] = {
                 'code': self.client.client_code if self.client else '',
                 'name': self.client.client_name if self.client else '',
                 'address': self.client.client_address if self.client else '',
                 'invoice': self.client.invoice_number if self.client else ''
-            } if self.declaration_type == 'bok' else None,
-            'batches': [
-                {
-                    'code': b.product_code,
-                    'name': b.product_name if b.show_name else '',
-                    'production_date': b.production_date.strftime('%d.%m.%Y') if (b.production_date and b.show_production_date) else '',
-                    'quantity': b.quantity if b.show_quantity else '',
-                    'batch_number': b.batch_number if b.show_batch else '',
-                    'expiry_date': b.expiry_date,
-                    'thickness': f"{b.thickness1}/{b.thickness2}/{b.thickness3} μm" if b.show_thickness else ''
-                } for b in self.batches
-            ] if self.declaration_type == 'bok' else [],
-            'substances_table': self.substances_table,
-            'dual_use_list': self.dual_use_list
-        }
+            }
+
+            # Przygotuj dane partii
+            batches_data = []
+            for b in self.batches:
+                # Buduj strukturę z grubościami
+                thickness_str = ""
+                if b.show_thickness and b.thickness1 and b.thickness2:
+                    if b.thickness3:
+                        thickness_str = f"{b.thickness1}/{b.thickness2}/{b.thickness3} μm"
+                    else:
+                        thickness_str = f"{b.thickness1}/{b.thickness2} μm"
+
+                batches_data.append({
+                    'index': b.product_code,
+                    'description': b.product_name if b.show_name else '',
+                    'batch_no': b.batch_number if b.show_batch else '',
+                    'qty': b.quantity if b.show_quantity else '',
+                    'thickness': thickness_str,
+                    'prod_date': b.production_date.strftime('%d.%m.%Y') if (
+                                b.production_date and b.show_production_date) else ''
+                })
+
+            context['batches'] = batches_data
+
+            # Wspólna struktura (z product.name która zawiera np. "PET/PE 12/40 μm")
+            context['common_structure'] = self.product.name
+
+            # Config dla tabeli - czy pokazywać kolumny
+            any_has_description = any(b.show_name for b in self.batches)
+            any_has_thickness = any(b.show_thickness for b in self.batches)
+
+            context['config'] = {
+                'show_description': any_has_description,
+                'show_thickness': any_has_thickness
+            }
+
+        return context

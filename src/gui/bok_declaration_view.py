@@ -40,16 +40,42 @@ class BOKDeclarationView(QWidget):
 
     def _test_db_connection(self):
         """Testuje połączenie z bazą przy starcie"""
-        if not self.db_service.testConnection():
+        if self.db_service.testConnection():
+            self.label_db_status.setText("✅ Połączono z bazą danych")
+            self.label_db_status.setStyleSheet("font-weight: bold; color: #27ae60;")
+            self.btn_reconnect.setEnabled(False)
+        else:
+            self.label_db_status.setText("❌ Brak połączenia z bazą danych")
+            self.label_db_status.setStyleSheet("font-weight: bold; color: #e74c3c;")
+            self.btn_reconnect.setEnabled(True)
             QMessageBox.warning(
                 self,
                 "Uwaga",
                 "Nie można połączyć się z bazą danych.\n"
-                "Funkcje pobierania danych będą niedostępne."
+                "Funkcje pobierania danych będą niedostępne.\n\n"
+                "Kliknij 'Ponów połączenie' aby spróbować ponownie."
             )
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
+
+        # --- STATUS BAZY DANYCH ---
+        db_status_group = QGroupBox("Status połączenia z bazą danych")
+        db_status_layout = QHBoxLayout()
+
+        self.label_db_status = QLabel("Sprawdzanie...")
+        self.label_db_status.setStyleSheet("font-weight: bold; color: #888;")
+
+        self.btn_reconnect = QPushButton("🔄 Ponów połączenie")
+        self.btn_reconnect.clicked.connect(self._reconnect_database)
+        self.btn_reconnect.setStyleSheet("padding: 5px 10px;")
+
+        db_status_layout.addWidget(self.label_db_status)
+        db_status_layout.addWidget(self.btn_reconnect)
+        db_status_layout.addStretch()
+
+        db_status_group.setLayout(db_status_layout)
+        layout.addWidget(db_status_group)
 
         # --- SEKCJA 1: JĘZYK ---
         lang_group = QGroupBox("Język")
@@ -92,6 +118,10 @@ class BOKDeclarationView(QWidget):
         # --- SEKCJA 3: SPECYFIKACJA LAMINATU ---
         struct_group = QGroupBox("Specyfikacja Struktury")
         s_layout = QFormLayout()
+
+        self.checkbox_auto_structure = QCheckBox("Automatycznie pobieraj strukturę z bazy")
+        self.checkbox_auto_structure.setChecked(True)
+        s_layout.addRow(self.checkbox_auto_structure)
 
         # Checkbox trilayer
         self.checkbox_trilayer = QCheckBox("Struktura 3-warstwowa")
@@ -290,96 +320,61 @@ class BOKDeclarationView(QWidget):
     def _search_order(self):
         """Pobiera dane z bazy i uzupełnia pola"""
         zo = self.input_zo.text().strip()
+        if not zo:
+            return
+
         data = self.db_service.get_order_data(zo)
 
         if not data:
-            QMessageBox.warning(self, "Błąd", "Nie znaleziono zlecenia.")
+            QMessageBox.warning(self, "Błąd", f"Nie znaleziono zlecenia: {zo}")
             return
 
-        # Data produkcji
+        # 1. Dane podstawowe wyrobu
+        self.input_art_index.setText(str(data.get('article_index', '')))
+        self.input_art_desc.setText(data.get('article_description', ''))
+
         db_date = data.get('production_date')
         if db_date:
             self.input_date.setDate(QDate(db_date.year, db_date.month, db_date.day))
 
-        # === PIERWSZY PRODUKT - uzupełnij klienta i strukturę ===
-        if not self.products:
-            self.input_client_id.setText(str(data['client_number']))
-            self.input_client_name.setText(data['client_name'])
-            self.input_client_addr.setText(self._clean_address(data['client_address']))
+        # Numer partii
+        year_suffix = str(datetime.datetime.now().year)[2:]
+        self.input_batch.setText(f"{zo}/{year_suffix}/ZK")
 
-            # Parsuj strukturę z bazy
-            db_struct = data.get('product_structure', '')
+        # 2. Pobierz grubości i strukturę
+        t1 = str(data.get('thickness1', ''))
+        t2 = str(data.get('thickness2', ''))
+        t3 = str(data.get('thickness3', ''))
+        db_struct = data.get('product_structure', '')
 
-            thick1 = data.get('thickness1')
-            thick2 = data.get('thickness2')
-            thick3 = data.get('thickness3')
-
-            if db_struct and "/" in db_struct:
-                parts = db_struct.split('/')
-
-                # Sprawdź czy 2-laminat czy 3-laminat
-                is_trilayer = len(parts) == 3
-
-                if self.checkbox_auto_structure.isChecked():
-                    # Ustaw materiały
-                    self.combo_mat1.setCurrentText(parts[0].strip())
-                    self.combo_mat2.setCurrentText(parts[1].strip())
-
-                    if is_trilayer:
-                        self.checkbox_trilayer.setChecked(True)
-                        self.combo_mat3.setCurrentText(parts[2].strip())
-
-                    # Ustaw grubości
-                    if thick1:
-                        self.input_thick1.setText(str(thick1))
-                    if thick2:
-                        self.input_thick2.setText(str(thick2))
-                    if thick3 and is_trilayer:
-                        self.input_thick3.setText(str(thick3))
-
-                    self.structure_locked = True
-
-                    struct_info = f"{db_struct} {thick1}/{thick2}"
-                    if is_trilayer and thick3:
-                        struct_info += f"/{thick3}"
-                    struct_info += " μm"
-
-                    QMessageBox.information(
-                        self,
-                        "Struktura ustawiona",
-                        f"Struktura: {struct_info}\n\nKolejne zlecenia będą sprawdzane."
-                    )
-                else:
-                    QMessageBox.information(
-                        self,
-                        "Struktura w bazie",
-                        f"W bazie: {db_struct}\n\nAuto-uzupełnianie wyłączone."
-                    )
-
-        # === KOLEJNE PRODUKTY - sprawdź strukturę ===
+        # --- LOGIKA AUTO-TRILAYER ---
+        # Jeśli t3 istnieje i nie jest puste, zaznaczamy 3 warstwy
+        if t3 and t3.strip() and t3 != "0":
+            self.checkbox_trilayer.setChecked(True)
         else:
-            db_struct = data.get('product_structure', '')
+            self.checkbox_trilayer.setChecked(False)
 
-            if self.checkbox_trilayer.isChecked():
-                current_struct = f"{self.combo_mat1.currentText()}/{self.combo_mat2.currentText()}/{self.combo_mat3.currentText()}"
-            else:
-                current_struct = f"{self.combo_mat1.currentText()}/{self.combo_mat2.currentText()}"
+        # 3. Ustawienie pól w Sekcji 4 (Wyrob)
+        self.input_prod_thick1.setText(t1)
+        self.input_prod_thick2.setText(t2)
+        if self.checkbox_trilayer.isChecked():
+            self.input_prod_thick3.setText(t3)
 
-            if db_struct and db_struct.strip() != current_struct:
-                reply = QMessageBox.warning(
-                    self,
-                    "⚠️ Niezgodność struktury",
-                    f"Bieżąca: {current_struct}\nW bazie: {db_struct}\n\nKontynuować?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    return
+        # 4. Jeśli to pierwszy produkt, ustaw dane klienta i strukturę (Sekcja 2 i 3)
+        if not self.products:
+            self.input_client_id.setText(str(data.get('client_number', '')))
+            self.input_client_name.setText(data.get('client_name', ''))
+            self.input_client_addr.setText(self._clean_address(data.get('client_address', '')))
 
-        # Dane produktu
-        self.input_art_index.setText(str(data['article_index']))
-        self.input_art_desc.setText(data['article_description'])
-        year = str(datetime.datetime.now().year)[2:]
-        self.input_batch.setText(f"{zo}/{year}/ZK")
+            # Ustawienie materiałów w combo (Sekcja 3)
+            # Sprawdzamy czy istnieje checkbox_auto_structure (dodaj go w init_ui!)
+            if hasattr(self, 'checkbox_auto_structure') and self.checkbox_auto_structure.isChecked() and db_struct:
+                parts = [p.strip() for p in db_struct.split('/')]
+                if len(parts) >= 2:
+                    self.combo_mat1.setCurrentText(parts[0])
+                    self.combo_mat2.setCurrentText(parts[1])
+                    if len(parts) == 3 and self.checkbox_trilayer.isChecked():
+                        self.combo_mat3.setCurrentText(parts[2])
 
     def _add_product_to_list(self):
         idx = self.input_art_index.text().strip()
@@ -667,3 +662,23 @@ class BOKDeclarationView(QWidget):
 
         self._update_laminate_info()
 
+    def _reconnect_database(self):
+        """Próbuje ponownie połączyć z bazą"""
+        self.label_db_status.setText("Łączenie...")
+        self.label_db_status.setStyleSheet("font-weight: bold; color: #f39c12;")
+        self.btn_reconnect.setEnabled(False)
+
+        # Daj czas na odświeżenie UI
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(100, self._do_reconnect)
+
+    def _do_reconnect(self):
+        """Wykonuje faktyczne ponowne połączenie"""
+        try:
+            # Stwórz nową instancję DatabaseService
+            self.db_service = DatabaseService()
+            self._test_db_connection()
+        except Exception as e:
+            self.label_db_status.setText(f"❌ Błąd: {str(e)[:50]}")
+            self.label_db_status.setStyleSheet("font-weight: bold; color: #e74c3c;")
+            self.btn_reconnect.setEnabled(True)

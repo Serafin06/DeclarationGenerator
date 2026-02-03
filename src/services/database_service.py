@@ -57,25 +57,30 @@ class DatabaseService:
                 result = conn.execute(query, {"order_number": order_number}).fetchone()
 
                 if result:
-                    # Składanie adresu w jeden czytelny string
-                    full_address = f"{result.street}, {result.zip_code} {result.city}"
+                    # Funkcja pomocnicza: zamienia None na ""
+                    s = lambda val: str(val) if val is not None else ""
+
+                    # Składanie adresu z zabezpieczeniem przed None
+                    addr_parts = [s(result.street), s(result.zip_code), s(result.city)]
+                    full_address = ", ".join(filter(None, addr_parts))
 
                     return {
-                        'order_number': result.order_number,
-                        'article_index': result.article_index,
-                        'client_article_index': result.client_article_index,
-                        'article_description': result.article_description,
-                        'product_structure': result.product_structure,
-                        'production_date': result.production_date,
-                        'batch_number': result.order_number,
-                        'client_number': result.client_number,
-                        'client_name': result.client_name,
+                        'order_number': s(result.order_number),
+                        'article_index': s(result.article_index),
+                        'client_article_index': s(result.client_article_index),
+                        'article_description': s(result.article_description),
+                        'product_structure': s(result.product_structure),
+                        'production_date': result.production_date,  # Tu zostawiamy obiekt daty
+                        'batch_number': s(result.order_number),
+                        'client_number': s(result.client_number),
+                        'client_name': s(result.client_name),
                         'client_address': full_address,
-                        'thickness1': result.thickness1,
-                        'thickness2': result.thickness2,
-                        'thickness3': result.thickness3,
+                        'thickness1': s(result.thickness1),
+                        'thickness2': s(result.thickness2),
+                        'thickness3': s(result.thickness3),
                     }
                 return None
+
         except Exception as e:
             print(f"❌ Database Error: {e}")
             raise
