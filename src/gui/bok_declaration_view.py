@@ -273,37 +273,105 @@ class BOKDeclarationView(QWidget):
     def _search_order(self):
         zo = self.input_zo.text().strip()
         if not zo: return
+
         data = self.db_service.get_order_data(zo)
         if not data:
             QMessageBox.warning(self, "Błąd", f"Nie znaleziono zlecenia: {zo}")
             return
 
+        # Dane produktu - zawsze
         self.input_art_index.setText(str(data.get('article_index', '')))
         self.input_art_desc.setText(data.get('article_description', ''))
         self.input_batch.setText(f"{zo}/{str(datetime.datetime.now().year)[2:]}/ZK")
 
         db_date = data.get('production_date')
-        if db_date: self.input_date.setDate(QDate(db_date.year, db_date.month, db_date.day))
+        if db_date:
+            self.input_date.setDate(QDate(db_date.year, db_date.month, db_date.day))
 
-        t3 = str(data.get('thickness3', ''))
+        # Grubości z bazy
+        t1 = str(data.get('thickness1', '')).strip()
+        t2 = str(data.get('thickness2', '')).strip()
+        t3 = str(data.get('thickness3', '')).strip()
+
+        # Usuń "0", "None", puste stringi
+        if t1 in ["0", "None", ""]: t1 = ""
+        if t2 in ["0", "None", ""]: t2 = ""
+        if t3 in ["0", "None", ""]: t3 = ""
+
+        # === PIERWSZY PRODUKT - ustaw strukturę i klienta ===
         if not self.products:
-            self.checkbox_trilayer.setChecked(bool(t3 and t3 not in ["0", "None", ""]))
             self.input_client_id.setText(str(data.get('client_number', '')))
             self.input_client_name.setText(data.get('client_name', ''))
             self.input_client_addr.setText(" ".join((data.get('client_address') or "").split()))
 
-            db_struct = data.get('product_structure', '')
-            if self.checkbox_auto_structure.isChecked() and db_struct:
-                parts = [p.strip() for p in db_struct.split('/')]
-                if len(parts) >= 2:
-                    self.combo_mat1.setCurrentText(parts[0])
-                    self.combo_mat2.setCurrentText(parts[1])
-                    if len(parts) == 3 and self.checkbox_trilayer.isChecked():
-                        self.combo_mat3.setCurrentText(parts[2])
+            db_struct = data.get('product_structure', '').strip()
 
-        self.input_prod_thick1.setText(str(data.get('thickness1', '')))
-        self.input_prod_thick2.setText(str(data.get('thickness2', '')))
-        if self.checkbox_trilayer.isChecked(): self.input_prod_thick3.setText(t3)
+            if db_struct and self.checkbox_auto_structure.isChecked():
+                parts = [p.strip() for p in db_struct.split('/')]
+
+                # Wykryj czy 3-laminat (albo po strukturze albo po thickness3)
+                is_trilayer = (len(parts) == 3) or (t3 and t3 not in ["0", "None", ""])
+
+                if is_trilayer:
+                    self.checkbox_trilayer.setChecked(True)
+                    if len(parts) >= 3:
+                        self.combo_mat1.setCurrentText(parts[0])
+                        self.combo_mat2.setCurrentText(parts[1])
+                        self.combo_mat3.setCurrentText(parts[2])
+                    elif len(parts) == 2:
+                        # Mamy tylko 2 materiały w strukturze ale thickness3 jest wypełniony
+                        self.combo_mat1.setCurrentText(parts[0])
+                        self.combo_mat2.setCurrentText(parts[1])
+                        # combo_mat3 zostaje domyślny
+                else:
+                    self.checkbox_trilayer.setChecked(False)
+                    if len(parts) >= 2:
+                        self.combo_mat1.setCurrentText(parts[0])
+                        self.combo_mat2.setCurrentText(parts[1])
+
+                # Komunikat
+                struct_info = f"Struktura: {db_struct}"
+                if t1 and t2:
+                    struct_info += f"\nGrubości: {t1}/{t2}"
+                    if is_trilayer and t3:
+                        struct_info += f"/{t3}"
+                struct_info += "\n\nKolejne zlecenia będą sprawdzane pod kątem zgodności."
+
+                QMessageBox.information(self, "✅ Struktura ustawiona", struct_info)
+
+        # === KOLEJNE PRODUKTY - waliduj strukturę ===
+        else:
+            db_struct = data.get('product_structure', '').strip()
+
+            # Zbuduj bieżącą strukturę z combo
+            m1 = self.combo_mat1.currentText()
+            m2 = self.combo_mat2.currentText()
+            m3 = self.combo_mat3.currentText()
+
+            if self.checkbox_trilayer.isChecked():
+                current_struct = f"{m1}/{m2}/{m3}"
+            else:
+                current_struct = f"{m1}/{m2}"
+
+            # Porównaj
+            if db_struct and db_struct != current_struct:
+                reply = QMessageBox.warning(
+                    self,
+                    "⚠️ Niezgodność struktury",
+                    f"Bieżąca struktura: {current_struct}\n"
+                    f"Struktura w zleceniu: {db_struct}\n\n"
+                    f"Czy kontynuować dodawanie tego wyrobu?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+
+        # Ustaw grubości (dla każdego produktu osobno)
+        self.input_prod_thick1.setText(t1)
+        self.input_prod_thick2.setText(t2)
+        if self.checkbox_trilayer.isChecked():
+            self.input_prod_thick3.setText(t3)
+
         self._update_laminate_info()
 
     # --- POZOSTAŁE METODY POMOCNICZE ---
@@ -494,8 +562,13 @@ class BOKDeclarationView(QWidget):
             QMessageBox.critical(self, "Błąd", str(e))
 
     def _generate_docx(self):
-        # Tutaj Twoja logika DOCX...
-        QMessageBox.information(self, "Info", "Funkcja DOCX w trakcie integracji.")
+        if not self.products: return
+        decl = self._create_declaration()
+        path, _ = QFileDialog.getSaveFileName(self, "Zapisz DOCX", "", "*.docx")
+        if path:
+            # Tutaj wywołanie Twojej metody z PDFGenerator lub dedykowanej klasy
+            self.pdf_generator.generate_docx(decl, path) # Zakładam, że tam siedzi Twoja logika
+            QMessageBox.information(self, "Sukces", "Plik DOCX został wygenerowany.")
 
     def _search_client_dialog(self):
         try:
