@@ -119,16 +119,27 @@ class BOKDeclarationView(QWidget):
         add_group = QGroupBox("Dodaj Wyrób")
         a_layout = QVBoxLayout()
 
-        # Rząd 1: ZO i Indeks
-        r1 = QHBoxLayout();
-        self.input_zo = QLineEdit();
+        # Rząd 1: ZO i Indeks (ZMODYFIKOWANE)
+        r1 = QHBoxLayout()
+
+        self.input_zo = QLineEdit()
         self.input_zo.setPlaceholderText("ZO...")
+        self.input_zo.setFixedWidth(180)  # Zmniejszone ze standardu, żeby zmieścić przycisk
         self.input_zo.returnPressed.connect(self._search_order)
-        self.input_art_index = QLineEdit();
+
+        # Dodany przycisk wyszukiwania
+        self.btn_search_zo = QPushButton("🔍")
+        self.btn_search_zo.setFixedWidth(35)
+        self.btn_search_zo.setToolTip("Pobierz dane zlecenia")
+        self.btn_search_zo.clicked.connect(self._search_order)
+
+        self.input_art_index = QLineEdit()
         self.input_art_index.setReadOnly(True)
-        r1.addWidget(QLabel("Zlecenie:"));
-        r1.addWidget(self.input_zo);
-        r1.addWidget(QLabel("Indeks:"));
+
+        r1.addWidget(QLabel("Zlecenie:"))
+        r1.addWidget(self.input_zo)
+        r1.addWidget(self.btn_search_zo)  # Przycisk między ZO a Indeksem
+        r1.addWidget(QLabel("Indeks:"))
         r1.addWidget(self.input_art_index)
         a_layout.addLayout(r1)
 
