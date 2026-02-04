@@ -43,7 +43,11 @@ class PDFGenerator:
     def _prepare_context(self, declaration: Declaration) -> dict:
         """Przygotowuje kontekst dla szablonu"""
         texts = self.data_loader.get_texts(declaration.language)
+
+        # Declaration.to_template_dict() JUŻ PRZYGOTOWUJE wszystko (batches, client, config)!
         context = declaration.to_template_dict()
+
+        # Dodaj tylko teksty i obrazy
         context['texts'] = texts
 
         if declaration.generation_date:
@@ -51,7 +55,7 @@ class PDFGenerator:
         else:
             context['generation_date'] = datetime.now().strftime("%d.%m.%Y")
 
-        # Embed obrazy jako base64 (to już masz dobrze)
+        # Embed obrazy jako base64
         logo_path = self.templates_base_path / "logo.jpg"
         podpis_path = self.templates_base_path / "podpis.png"
 
@@ -64,6 +68,14 @@ class PDFGenerator:
             with open(podpis_path, 'rb') as f:
                 podpis_b64 = base64.b64encode(f.read()).decode()
                 context['podpis_base64'] = f"data:image/png;base64,{podpis_b64}"
+
+        # === DEBUG ===
+        print(f"\n=== DEBUG _prepare_context ===")
+        print(f"Batches w context: {len(context.get('batches', []))}")
+        print(f"Config: {context.get('config', {})}")
+        if context.get('batches'):
+            print(f"Pierwszy batch: {context['batches'][0]}")
+        # === KONIEC DEBUG ===
 
         return context
 

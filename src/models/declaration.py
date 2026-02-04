@@ -1,3 +1,5 @@
+# models/declaration.py
+
 """
 Declaration - Model przechowujący dane deklaracji zgodności
 Używa wzorca Builder do konstrukcji

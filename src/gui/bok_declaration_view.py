@@ -539,46 +539,96 @@ class BOKDeclarationView(QWidget):
         self._test_db_connection()
 
     def _validate_input(self):
-        if not self.input_client_name.text().strip() or not self.products:
-            QMessageBox.warning(self, "Błąd", "Brak danych klienta lub wyrobów.");
+        """Walidacja przed generowaniem dokumentu"""
+
+        # Sprawdź klienta
+        if not self.input_client_name.text().strip():
+            QMessageBox.warning(self, "Błąd", "Brak nazwy klienta.")
             return False
+
+        # Sprawdź produkty
+        if not self.products:
+            QMessageBox.warning(self, "Błąd", "Brak wyrobów.\nDodaj przynajmniej jeden produkt.")
+            return False
+
+        # Sprawdź numer faktury
+        if not self.input_invoice.text().strip():
+            reply = QMessageBox.question(
+                self,
+                "Brak numeru faktury",
+                "Nie podano numeru faktury.\n\nCzy kontynuować bez faktury?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return False
+
         return True
 
     def _create_declaration(self) -> Declaration:
-        decl = Declaration();
+        decl = Declaration()
+        decl.declaration_type = 'bok'
         decl.language = 'pl' if self.radio_pl.isChecked() else 'en'
-        decl.client = ClientData(client_code=self.input_client_id.text(), client_name=self.input_client_name.text(),
-                                 client_address=self.input_client_addr.text(), invoice_number=self.input_invoice.text())
+
+        # Dane klienta
+        decl.client = ClientData(
+            client_code=self.input_client_id.text(),
+            client_name=self.input_client_name.text(),
+            client_address=self.input_client_addr.text(),
+            invoice_number=self.input_invoice.text()
+        )
+
+        # Struktura produktu
         m1, m2 = self.combo_mat1.currentText(), self.combo_mat2.currentText()
+
         if self.checkbox_trilayer.isChecked():
-            m3 = self.combo_mat3.currentText();
+            m3 = self.combo_mat3.currentText()
             decl.product = Product(name=f"{m1}/{m2}/{m3}", structure=f"{m1}/{m2}/{m3}")
             details = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
         else:
             decl.product = Product(name=f"{m1}/{m2}", structure=f"{m1}/{m2}")
             details = self.data_loader.build_structure_data(m1, m2)
-        decl.substances_table, decl.dual_use_list, decl.batches = details.get('substances', []), details.get('dual_use',
-                                                                                                             []), self.products.copy()
+
+        # ✅ NOWY KOD (POPRAWNY):
+        decl.substances_table = details.get('substances', [])
+        decl.dual_use_list = details.get('dual_use', [])
+        decl.batches = self.products.copy()  # <-- To jest lista ProductBatch!
+
+        # === DEBUG (opcjonalnie - możesz usunąć po sprawdzeniu) ===
+        print(f"\n=== DEBUG _create_declaration ===")
+        print(f"Liczba batches: {len(decl.batches)}")
+        print(f"Liczba substances: {len(decl.substances_table)}")
+        print(f"Liczba dual_use: {len(decl.dual_use_list)}")
+        if decl.batches:
+            for i, b in enumerate(decl.batches):
+                print(f"  Batch {i}: {b.product_code} | {b.product_name} | {b.batch_number}")
+        # === KONIEC DEBUG ===
+
         return decl
 
     def _generate_pdf(self):
-        if not self._validate_input(): return
+        if not self._validate_input():
+            return
+
         try:
-            decl = self._create_declaration();
+            decl = self._create_declaration()
             path, _ = QFileDialog.getSaveFileName(self, "Zapisz", f"Deklaracja_{decl.client.client_name}.pdf", "*.pdf")
             if path:
-                with open(path, 'wb') as f: f.write(self.pdf_generator.generate_pdf_bytes(decl))
+                with open(path, 'wb') as f:
+                    f.write(self.pdf_generator.generate_pdf_bytes(decl))
                 QMessageBox.information(self, "OK", "Zapisano PDF.")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", str(e))
 
     def _generate_docx(self):
-        if not self.products: return
+        # DODAJ WALIDACJĘ (było tylko: if not self.products: return)
+        if not self._validate_input():
+            return
+
         decl = self._create_declaration()
         path, _ = QFileDialog.getSaveFileName(self, "Zapisz DOCX", "", "*.docx")
         if path:
-            # Tutaj wywołanie Twojej metody z PDFGenerator lub dedykowanej klasy
-            self.pdf_generator.generate_docx(decl, path) # Zakładam, że tam siedzi Twoja logika
+            self.pdf_generator.generate_docx(decl, path)
             QMessageBox.information(self, "Sukces", "Plik DOCX został wygenerowany.")
 
     def _search_client_dialog(self):
