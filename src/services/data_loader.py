@@ -7,11 +7,13 @@ Używa NetworkService do dostępu do folderu sieciowego
 """
 import json
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, List
 from src.config.constants import (
     TEXTS_PL, TEXTS_EN, USE_NETWORK
 )
 from src.services.network_service import NetworkService
+from src.utils.material_macher import MaterialMatcher
+
 
 class DataLoader:
     """Singleton zarządzający danymi z serwera"""
@@ -261,3 +263,26 @@ class DataLoader:
             'substances': substances_list,
             'dual_use': dual_use_list
         }
+
+    def find_material_match(self, material_name: str) -> Optional[str]:
+        """
+        Znajduje dopasowanie dla nazwy materiału z tolerancją na formatowanie.
+
+        Args:
+            material_name: Nazwa z bazy (np. 'PE-EVOH')
+
+        Returns:
+            Dopasowana nazwa z materials.json lub None
+        """
+        available = self.get_materials_list()
+        return MaterialMatcher.find_best_match(material_name, available)
+
+    def parse_and_match_structure(self, structure_str: str) -> Tuple[List[str], bool]:
+        """
+        Parsuje strukturę z bazy i dopasowuje materiały.
+
+        Returns:
+            (matched_materials, all_found)
+        """
+        available = self.get_materials_list()
+        return MaterialMatcher.parse_structure(structure_str, available)

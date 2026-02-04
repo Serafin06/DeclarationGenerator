@@ -318,64 +318,82 @@ class BOKDeclarationView(QWidget):
             db_struct = data.get('product_structure', '').strip()
 
             if db_struct and self.checkbox_auto_structure.isChecked():
-                parts = [p.strip() for p in db_struct.split('/')]
+                # ===== NOWA LOGIKA Z DOPASOWYWANIEM =====
+                matched_materials, all_found = self.data_loader.parse_and_match_structure(db_struct)
 
-                # Wykryj czy 3-laminat (albo po strukturze albo po thickness3)
-                is_trilayer = (len(parts) == 3) or (t3 and t3 not in ["0", "None", ""])
-
-                if is_trilayer:
-                    self.checkbox_trilayer.setChecked(True)
-                    if len(parts) >= 3:
-                        self.combo_mat1.setCurrentText(parts[0])
-                        self.combo_mat2.setCurrentText(parts[1])
-                        self.combo_mat3.setCurrentText(parts[2])
-                    elif len(parts) == 2:
-                        # Mamy tylko 2 materiały w strukturze ale thickness3 jest wypełniony
-                        self.combo_mat1.setCurrentText(parts[0])
-                        self.combo_mat2.setCurrentText(parts[1])
-                        # combo_mat3 zostaje domyślny
+                if not all_found:
+                    # Nie wszystkie materiały znaleziono
+                    missing = [m for m in matched_materials if m not in self.available_materials]
+                    QMessageBox.warning(
+                        self,
+                        "⚠️ Nieznane materiały",
+                        f"Struktura z bazy: {db_struct}\n\n"
+                        f"Nie znaleziono materiałów: {', '.join(missing)}\n\n"
+                        f"Ustaw strukturę ręcznie."
+                    )
+                    # Nie ustawiaj automatycznie
                 else:
-                    self.checkbox_trilayer.setChecked(False)
-                    if len(parts) >= 2:
-                        self.combo_mat1.setCurrentText(parts[0])
-                        self.combo_mat2.setCurrentText(parts[1])
+                    # Wszystko OK - ustaw comboboxy
+                    is_trilayer = len(matched_materials) == 3 or (t3 and t3 not in ["0", "None", ""])
 
-                # Komunikat
-                struct_info = f"Struktura: {db_struct}"
-                if t1 and t2:
-                    struct_info += f"\nGrubości: {t1}/{t2}"
-                    if is_trilayer and t3:
-                        struct_info += f"/{t3}"
-                struct_info += "\n\nKolejne zlecenia będą sprawdzane pod kątem zgodności."
+                    if is_trilayer:
+                        self.checkbox_trilayer.setChecked(True)
+                        if len(matched_materials) >= 1:
+                            self.combo_mat1.setCurrentText(matched_materials[0])
+                        if len(matched_materials) >= 2:
+                            self.combo_mat2.setCurrentText(matched_materials[1])
+                        if len(matched_materials) >= 3:
+                            self.combo_mat3.setCurrentText(matched_materials[2])
+                    else:
+                        self.checkbox_trilayer.setChecked(False)
+                        if len(matched_materials) >= 1:
+                            self.combo_mat1.setCurrentText(matched_materials[0])
+                        if len(matched_materials) >= 2:
+                            self.combo_mat2.setCurrentText(matched_materials[1])
 
-                QMessageBox.information(self, "✅ Struktura ustawiona", struct_info)
+                    # Komunikat sukcesu
+                    struct_info = f"Struktura: {db_struct}\n"
+                    struct_info += f"Dopasowano: {'/'.join(matched_materials)}"
+                    if t1 and t2:
+                        struct_info += f"\nGrubości: {t1}/{t2}"
+                        if is_trilayer and t3:
+                            struct_info += f"/{t3}"
+                    struct_info += "\n\nKolejne zlecenia będą sprawdzane pod kątem zgodności."
 
-        # === KOLEJNE PRODUKTY - waliduj strukturę ===
-        else:
-            db_struct = data.get('product_structure', '').strip()
+                    QMessageBox.information(self, "✅ Struktura ustawiona", struct_info)
 
-            # Zbuduj bieżącą strukturę z combo
-            m1 = self.combo_mat1.currentText()
-            m2 = self.combo_mat2.currentText()
-            m3 = self.combo_mat3.currentText()
-
-            if self.checkbox_trilayer.isChecked():
-                current_struct = f"{m1}/{m2}/{m3}"
+                # === KOLEJNE PRODUKTY - waliduj ===
             else:
-                current_struct = f"{m1}/{m2}"
+                db_struct = data.get('product_structure', '').strip()
 
-            # Porównaj
-            if db_struct and db_struct != current_struct:
-                reply = QMessageBox.warning(
-                    self,
-                    "⚠️ Niezgodność struktury",
-                    f"Bieżąca struktura: {current_struct}\n"
-                    f"Struktura w zleceniu: {db_struct}\n\n"
-                    f"Czy kontynuować dodawanie tego wyrobu?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    return
+                # Zbuduj bieżącą strukturę
+                m1 = self.combo_mat1.currentText()
+                m2 = self.combo_mat2.currentText()
+                m3 = self.combo_mat3.currentText()
+
+                if self.checkbox_trilayer.isChecked():
+                    current_struct = f"{m1}/{m2}/{m3}"
+                else:
+                    current_struct = f"{m1}/{m2}"
+
+                # ===== PORÓWNAJ Z NORMALIZACJĄ =====
+                # Normalizuj obie struktury do porównania
+                from src.utils.material_macher import MaterialMatcher
+
+                current_norm = MaterialMatcher.normalize(current_struct)
+                db_norm = MaterialMatcher.normalize(db_struct)
+
+                if db_struct and current_norm != db_norm:
+                    reply = QMessageBox.warning(
+                        self,
+                        "⚠️ Niezgodność struktury",
+                        f"Bieżąca struktura: {current_struct}\n"
+                        f"Struktura w zleceniu: {db_struct}\n\n"
+                        f"Czy kontynuować dodawanie tego wyrobu?",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    if reply == QMessageBox.No:
+                        return
 
         # Ustaw grubości (dla każdego produktu osobno)
         self.input_prod_thick1.setText(t1)
