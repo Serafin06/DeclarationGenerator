@@ -662,3 +662,29 @@ class BOKDeclarationView(QWidget):
                 self.input_client_addr.setText(" ".join((c.get('client_address') or "").split()))
         except Exception as e:
             QMessageBox.critical(self, "Błąd", str(e))
+
+    # W klasie BOKDeclarationView, dodaj na końcu (przed ostatnim nawiasem):
+
+    def refresh_data(self):
+        """Odświeża dane z serwera"""
+        self.available_materials = self.data_loader.get_materials_list()
+
+        # Zapisz aktualne wybory
+        current_mat1 = self.combo_mat1.currentText()
+        current_mat2 = self.combo_mat2.currentText()
+        current_mat3 = self.combo_mat3.currentText()
+
+        # Przeładuj comboboxy
+        for combo in [self.combo_mat1, self.combo_mat2, self.combo_mat3]:
+            combo.clear()
+            combo.addItems(self.available_materials)
+
+        # Przywróć poprzednie wartości jeśli istnieją
+        if current_mat1 in self.available_materials:
+            self.combo_mat1.setCurrentText(current_mat1)
+        if current_mat2 in self.available_materials:
+            self.combo_mat2.setCurrentText(current_mat2)
+        if current_mat3 in self.available_materials:
+            self.combo_mat3.setCurrentText(current_mat3)
+
+        self._update_laminate_info()
