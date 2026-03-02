@@ -174,23 +174,28 @@ class DataLoader:
             for did in supplier_data.get('dualUse', []):
                 dual_use_ids.add(did)
 
-        # Formatuj jako stringi "Nazwa (E-symbol)"
-        dual_use_list = []
+        # Buduj listę słowników dla tabeli HTML
+        dual_use_formatted = []
         for did in sorted(dual_use_ids):
             did_str = str(did)
             master_data = dual_use_master.get(did_str, {})
 
+            # Pobieramy dane z bazy (fallback PL -> EN)
             name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            cas = master_data.get('cas', '')
             e_symbol = master_data.get('e_symbol', '')
 
-            if name and e_symbol:
-                dual_use_list.append(f"{name} ({e_symbol})")
-            elif name:
-                dual_use_list.append(name)
+            # Dodajemy tylko jeśli mamy nazwę (dane kompletne)
+            if name:
+                dual_use_formatted.append({
+                    'name': name,
+                    'cas': cas,
+                    'e_symbol': e_symbol
+                })
 
         return {
             'substances': substances_list,
-            'dual_use': dual_use_list
+            'dual_use': dual_use_formatted
         }
 
     def get_network_status(self) -> Optional[dict]:
@@ -245,23 +250,27 @@ class DataLoader:
             for did in supplier_data.get('dualUse', []):
                 dual_use_ids.add(did)
 
-        # Formatuj jako stringi
-        dual_use_list = []
+        # Buduj listę słowników dla tabeli HTML
+        dual_use_formatted = []
         for did in sorted(dual_use_ids):
             did_str = str(did)
             master_data = dual_use_master.get(did_str, {})
 
+            # Pobieramy dane z bazy (fallback PL -> EN)
             name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            cas = master_data.get('cas', '')
             e_symbol = master_data.get('e_symbol', '')
 
-            if name and e_symbol:
-                dual_use_list.append(f"{name} ({e_symbol})")
-            elif name:
-                dual_use_list.append(name)
+            if name:
+                dual_use_formatted.append({
+                    'name': name,
+                    'cas': cas,
+                    'e_symbol': e_symbol
+                })
 
         return {
             'substances': substances_list,
-            'dual_use': dual_use_list
+            'dual_use': dual_use_formatted
         }
 
     def find_material_match(self, material_name: str) -> Optional[str]:

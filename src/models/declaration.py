@@ -79,7 +79,7 @@ class Declaration:
 
     # Dane do tabel - generowane na podstawie struktury laminatu
     substances_table: List[Dict] = field(default_factory=list)
-    dual_use_list: List[str] = field(default_factory=list)
+    dual_use_list: List[Dict] = field(default_factory=list)
 
     def to_template_dict(self) -> Dict:
         """Konwertuje model do słownika dla szablonu Jinja2"""
