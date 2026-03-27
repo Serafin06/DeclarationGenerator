@@ -119,7 +119,7 @@ class DataLoader:
 
         return material_entries[supplier_index]
 
-    def build_structure_data(self, mat1: str, mat2: str) -> Dict:
+    def build_structure_data(self, mat1: str, mat2: str, language: str = 'pl') -> Dict:
         """
         Buduje dane struktury z dwóch materiałów (WSZYSCY dostawcy).
         - SML: maksymalna wartość dla każdego substanceId
@@ -158,7 +158,10 @@ class DataLoader:
             master_data = substances_master.get(sid_str, {})
 
             # Użyj name_pl dla PL, name_en jako fallback
-            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            if language == 'en':
+                name = master_data.get('name_en', '') or master_data.get('name_pl', '')
+            else:
+                name = master_data.get('name_pl', '') or master_data.get('name_en', '')
 
             substances_list.append({
                 'nr_ref': master_data.get('ref_no', ''),
@@ -181,7 +184,11 @@ class DataLoader:
             master_data = dual_use_master.get(did_str, {})
 
             # Pobieramy dane z bazy (fallback PL -> EN)
-            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            if language == 'en':
+                name = master_data.get('name_en', '') or master_data.get('name_pl', '')
+            else:
+                name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+
             cas = master_data.get('cas', '')
             e_symbol = master_data.get('e_symbol', '')
 
@@ -204,7 +211,7 @@ class DataLoader:
             return self.network_service.get_status()
         return None
 
-    def build_structure_data_trilayer(self, mat1: str, mat2: str, mat3: str) -> Dict:
+    def build_structure_data_trilayer(self, mat1: str, mat2: str, mat3: str,language: str = 'pl') -> Dict:
         """Jak build_structure_data ale dla 3 materiałów"""
         from src.config.constants import MATERIALS_DB, SUBSTANCES_MASTER, DUAL_USE_MASTER
 
@@ -234,7 +241,10 @@ class DataLoader:
             sid_str = str(sid)
             master_data = substances_master.get(sid_str, {})
 
-            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            if language == 'en':
+                name = master_data.get('name_en', '') or master_data.get('name_pl', '')
+            else:
+                name = master_data.get('name_pl', '') or master_data.get('name_en', '')
 
             substances_list.append({
                 'nr_ref': master_data.get('ref_no', ''),
@@ -257,7 +267,11 @@ class DataLoader:
             master_data = dual_use_master.get(did_str, {})
 
             # Pobieramy dane z bazy (fallback PL -> EN)
-            name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+            if language == 'en':
+                name = master_data.get('name_en', '') or master_data.get('name_pl', '')
+            else:
+                name = master_data.get('name_pl', '') or master_data.get('name_en', '')
+
             cas = master_data.get('cas', '')
             e_symbol = master_data.get('e_symbol', '')
 

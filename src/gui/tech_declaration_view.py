@@ -280,9 +280,10 @@ class TechDeclarationView(QWidget):
 
             if is_trilayer:
                 mat3 = self.combo_material3.currentText()
-                structure_data = self.data_loader.build_structure_data_trilayer(mat1, mat2, mat3)
+                structure_data = self.data_loader.build_structure_data_trilayer(mat1, mat2, mat3,
+                                                                                language=declaration.language)
             else:
-                structure_data = self.data_loader.build_structure_data(mat1, mat2)
+                structure_data = self.data_loader.build_structure_data(mat1, mat2, language=declaration.language)
 
             declaration.substances_table = structure_data.get('substances', [])
             declaration.dual_use_list = structure_data.get('dual_use', [])
