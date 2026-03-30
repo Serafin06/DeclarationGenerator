@@ -46,7 +46,6 @@ class DataLoader:
 
     def load_json(self, file_path: Path) -> Dict:
         """Ładuje JSON z cache lub z pliku"""
-        # Upewnij się że mamy dostęp do serwera
         if not self._ensure_network_access():
             raise ConnectionError("Brak dostępu do serwera sieciowego")
 
@@ -67,7 +66,6 @@ class DataLoader:
 
     def save_json(self, file_path: Path, data: Dict) -> None:
         """Zapisuje JSON i aktualizuje cache"""
-        # Upewnij się że mamy dostęp do zapisu
         if not self._ensure_network_access():
             raise ConnectionError("Brak dostępu do serwera sieciowego")
 
@@ -97,8 +95,6 @@ class DataLoader:
         """Czyści cały cache - wymusza przeładowanie wszystkich plików"""
         self._cache.clear()
 
-    # Dodaj na końcu klasy DataLoader, przed get_network_status():
-
     def get_materials_list(self) -> list:
         """Zwraca listę dostępnych materiałów"""
         from src.config.constants import MATERIALS_DB
@@ -119,71 +115,52 @@ class DataLoader:
 
         return material_entries[supplier_index]
 
-    def build_structure_data(self, mat1: str, mat2: str, language: str = 'pl') -> Dict:
+    def _build_substances_list(self, sml_max: dict, substances_master: dict, language: str) -> list:
         """
-        Buduje dane struktury z dwóch materiałów (WSZYSCY dostawcy).
-        - SML: maksymalna wartość dla każdego substanceId
-        - Dual Use: unikalne ID bez duplikatów
-
-        Returns: {
-            'substances': [...],  # dla tabeli SML - KLUCZE: nr_ref, nr_cas, name, sml_limit
-            'dual_use': [...]     # lista stringów "Nazwa (E-symbol)"
-        }
+        Buduje zdeduplikowaną listę substancji po CAS (lub nazwie jako fallback).
+        Eliminuje duplikaty wynikające z wielu substanceId dla tej samej substancji.
+        Dla duplikatów zachowuje najwyższą wartość SML.
         """
-        from src.config.constants import MATERIALS_DB, SUBSTANCES_MASTER, DUAL_USE_MASTER
+        seen = {}  # klucz: cas lub normalized_name -> entry dict
 
-        materials_db = self.load_json(MATERIALS_DB)
-        substances_master = self.load_json(SUBSTANCES_MASTER)
-        dual_use_master = self.load_json(DUAL_USE_MASTER)
-
-        # Pobierz WSZYSTKICH dostawców dla obu materiałów
-        mat1_suppliers = materials_db.get('materials', {}).get(mat1, [])
-        mat2_suppliers = materials_db.get('materials', {}).get(mat2, [])
-
-        # === SML - maksymalna wartość dla każdego substanceId ===
-        sml_max = {}  # {substanceId: max_value}
-
-        for supplier_data in mat1_suppliers + mat2_suppliers:
-            for item in supplier_data.get('sml', []):
-                sid = item['substanceId']
-                val = item.get('value', 0)
-
-                if sid not in sml_max or val > sml_max[sid]:
-                    sml_max[sid] = val
-
-        # Buduj listę substancji dla tabeli
-        substances_list = []
         for sid, max_val in sml_max.items():
             sid_str = str(sid)
             master_data = substances_master.get(sid_str, {})
 
-            # Użyj name_pl dla PL, name_en jako fallback
+            cas = master_data.get('cas', '').strip()
+
             if language == 'en':
                 name = master_data.get('name_en', '') or master_data.get('name_pl', '')
             else:
                 name = master_data.get('name_pl', '') or master_data.get('name_en', '')
 
-            substances_list.append({
+            dedup_key = cas if cas else name.lower().strip()
+
+            if not dedup_key:
+                continue
+
+            entry = {
                 'nr_ref': master_data.get('ref_no', ''),
-                'nr_cas': master_data.get('cas', ''),
+                'nr_cas': cas,
                 'name': name,
                 'sml_limit': max_val
-            })
+            }
 
-        # === Dual Use - unikalne ID ===
-        dual_use_ids = set()
+            if dedup_key not in seen or max_val > seen[dedup_key]['sml_limit']:
+                seen[dedup_key] = entry
 
-        for supplier_data in mat1_suppliers + mat2_suppliers:
-            for did in supplier_data.get('dualUse', []):
-                dual_use_ids.add(did)
+        return list(seen.values())
 
-        # Buduj listę słowników dla tabeli HTML
+    def _build_dual_use_list(self, dual_use_ids: set, dual_use_master: dict, language: str) -> list:
+        """
+        Buduje listę substancji dual-use na podstawie zestawu ID.
+        Zwraca listę słowników z name, cas, e_symbol.
+        """
         dual_use_formatted = []
         for did in sorted(dual_use_ids):
             did_str = str(did)
             master_data = dual_use_master.get(did_str, {})
 
-            # Pobieramy dane z bazy (fallback PL -> EN)
             if language == 'en':
                 name = master_data.get('name_en', '') or master_data.get('name_pl', '')
             else:
@@ -192,7 +169,6 @@ class DataLoader:
             cas = master_data.get('cas', '')
             e_symbol = master_data.get('e_symbol', '')
 
-            # Dodajemy tylko jeśli mamy nazwę (dane kompletne)
             if name:
                 dual_use_formatted.append({
                     'name': name,
@@ -200,18 +176,62 @@ class DataLoader:
                     'e_symbol': e_symbol
                 })
 
+        return dual_use_formatted
+
+    def _collect_sml_max(self, suppliers_lists: list) -> dict:
+        """
+        Zbiera maksymalne wartości SML dla każdego substanceId
+        ze wszystkich list dostawców.
+        """
+        sml_max = {}
+        for supplier_data in suppliers_lists:
+            for item in supplier_data.get('sml', []):
+                sid = item['substanceId']
+                val = item.get('value', 0)
+                if sid not in sml_max or val > sml_max[sid]:
+                    sml_max[sid] = val
+        return sml_max
+
+    def _collect_dual_use_ids(self, suppliers_lists: list) -> set:
+        """
+        Zbiera unikalne ID dual-use ze wszystkich list dostawców.
+        """
+        dual_use_ids = set()
+        for supplier_data in suppliers_lists:
+            for did in supplier_data.get('dualUse', []):
+                dual_use_ids.add(did)
+        return dual_use_ids
+
+    def build_structure_data(self, mat1: str, mat2: str, language: str = 'pl') -> Dict:
+        """
+        Buduje dane struktury z dwóch materiałów (WSZYSCY dostawcy).
+        - SML: maksymalna wartość, zdeduplikowana po CAS
+        - Dual Use: unikalne ID bez duplikatów
+
+        Returns: {
+            'substances': [...],  # dla tabeli SML
+            'dual_use': [...]     # lista dict {name, cas, e_symbol}
+        }
+        """
+        from src.config.constants import MATERIALS_DB, SUBSTANCES_MASTER, DUAL_USE_MASTER
+
+        materials_db = self.load_json(MATERIALS_DB)
+        substances_master = self.load_json(SUBSTANCES_MASTER)
+        dual_use_master = self.load_json(DUAL_USE_MASTER)
+
+        mat1_suppliers = materials_db.get('materials', {}).get(mat1, [])
+        mat2_suppliers = materials_db.get('materials', {}).get(mat2, [])
+        all_suppliers = mat1_suppliers + mat2_suppliers
+
+        sml_max = self._collect_sml_max(all_suppliers)
+        dual_use_ids = self._collect_dual_use_ids(all_suppliers)
+
         return {
-            'substances': substances_list,
-            'dual_use': dual_use_formatted
+            'substances': self._build_substances_list(sml_max, substances_master, language),
+            'dual_use': self._build_dual_use_list(dual_use_ids, dual_use_master, language)
         }
 
-    def get_network_status(self) -> Optional[dict]:
-        """Zwraca status połączenia sieciowego"""
-        if self.network_service:
-            return self.network_service.get_status()
-        return None
-
-    def build_structure_data_trilayer(self, mat1: str, mat2: str, mat3: str,language: str = 'pl') -> Dict:
+    def build_structure_data_trilayer(self, mat1: str, mat2: str, mat3: str, language: str = 'pl') -> Dict:
         """Jak build_structure_data ale dla 3 materiałów"""
         from src.config.constants import MATERIALS_DB, SUBSTANCES_MASTER, DUAL_USE_MASTER
 
@@ -219,73 +239,24 @@ class DataLoader:
         substances_master = self.load_json(SUBSTANCES_MASTER)
         dual_use_master = self.load_json(DUAL_USE_MASTER)
 
-        # Pobierz WSZYSTKICH dostawców dla trzech materiałów
         mat1_suppliers = materials_db.get('materials', {}).get(mat1, [])
         mat2_suppliers = materials_db.get('materials', {}).get(mat2, [])
         mat3_suppliers = materials_db.get('materials', {}).get(mat3, [])
+        all_suppliers = mat1_suppliers + mat2_suppliers + mat3_suppliers
 
-        # SML - maksymalna wartość
-        sml_max = {}
-
-        for supplier_data in mat1_suppliers + mat2_suppliers + mat3_suppliers:
-            for item in supplier_data.get('sml', []):
-                sid = item['substanceId']
-                val = item.get('value', 0)
-
-                if sid not in sml_max or val > sml_max[sid]:
-                    sml_max[sid] = val
-
-        # Buduj listę substancji
-        substances_list = []
-        for sid, max_val in sml_max.items():
-            sid_str = str(sid)
-            master_data = substances_master.get(sid_str, {})
-
-            if language == 'en':
-                name = master_data.get('name_en', '') or master_data.get('name_pl', '')
-            else:
-                name = master_data.get('name_pl', '') or master_data.get('name_en', '')
-
-            substances_list.append({
-                'nr_ref': master_data.get('ref_no', ''),
-                'nr_cas': master_data.get('cas', ''),
-                'name': name,
-                'sml_limit': max_val
-            })
-
-        # Dual Use - unikalne ID
-        dual_use_ids = set()
-
-        for supplier_data in mat1_suppliers + mat2_suppliers + mat3_suppliers:
-            for did in supplier_data.get('dualUse', []):
-                dual_use_ids.add(did)
-
-        # Buduj listę słowników dla tabeli HTML
-        dual_use_formatted = []
-        for did in sorted(dual_use_ids):
-            did_str = str(did)
-            master_data = dual_use_master.get(did_str, {})
-
-            # Pobieramy dane z bazy (fallback PL -> EN)
-            if language == 'en':
-                name = master_data.get('name_en', '') or master_data.get('name_pl', '')
-            else:
-                name = master_data.get('name_pl', '') or master_data.get('name_en', '')
-
-            cas = master_data.get('cas', '')
-            e_symbol = master_data.get('e_symbol', '')
-
-            if name:
-                dual_use_formatted.append({
-                    'name': name,
-                    'cas': cas,
-                    'e_symbol': e_symbol
-                })
+        sml_max = self._collect_sml_max(all_suppliers)
+        dual_use_ids = self._collect_dual_use_ids(all_suppliers)
 
         return {
-            'substances': substances_list,
-            'dual_use': dual_use_formatted
+            'substances': self._build_substances_list(sml_max, substances_master, language),
+            'dual_use': self._build_dual_use_list(dual_use_ids, dual_use_master, language)
         }
+
+    def get_network_status(self) -> Optional[dict]:
+        """Zwraca status połączenia sieciowego"""
+        if self.network_service:
+            return self.network_service.get_status()
+        return None
 
     def find_material_match(self, material_name: str) -> Optional[str]:
         """
