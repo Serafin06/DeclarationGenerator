@@ -1,3 +1,5 @@
+# gui/tech_declaration_view.py
+
 """
 TechDeclarationView - Widok do generowania deklaracji technologicznej/BOK
 """
@@ -45,6 +47,9 @@ class TechDeclarationView(QWidget):
         self.checkbox_trilayer = QCheckBox("Struktura 3-warstwowa (trójlaminat)")
         self.checkbox_trilayer.toggled.connect(self._toggle_third_material)
         layout.addWidget(self.checkbox_trilayer)
+
+        recycle_group = self._create_recyclability_section()
+        layout.addWidget(recycle_group)
 
         # Sekcja danych produktu
         product_group = self._create_product_section()
@@ -301,6 +306,9 @@ class TechDeclarationView(QWidget):
             declaration.substances_table = []
             declaration.dual_use_list = []
 
+        declaration.recyclability_enabled = self.checkbox_recyclability.isChecked()
+        declaration.is_recyclable = self.radio_recyclable.isChecked()
+
         return declaration
 
     def _preview_html(self):
@@ -426,6 +434,38 @@ class TechDeclarationView(QWidget):
             self.product_layout.labelForField(self.combo_material2).setText("Materiał 2 (wewnętrzny):")
 
         self._update_structure_preview()
+
+    def _create_recyclability_section(self) -> QGroupBox:
+        """Opcjonalny punkt o recyklowalności — checkbox + wybór tak/nie"""
+        group = QGroupBox("Recyklowalność (opcjonalnie)")
+        layout = QVBoxLayout()
+
+        self.checkbox_recyclability = QCheckBox("Dodaj punkt o recyklowalności")
+        self.checkbox_recyclability.toggled.connect(self._toggle_recyclability)
+        layout.addWidget(self.checkbox_recyclability)
+
+        self.recyclability_options = QWidget()
+        options_layout = QHBoxLayout(self.recyclability_options)
+        options_layout.setContentsMargins(20, 0, 0, 0)
+
+        self.recycle_btn_group = QButtonGroup()
+        self.radio_recyclable = QRadioButton("✅ Nadaje się do recyklingu")
+        self.radio_not_recyclable = QRadioButton("❌ Nie nadaje się do recyklingu")
+        self.radio_not_recyclable.setChecked(True)
+        self.recycle_btn_group.addButton(self.radio_recyclable, 1)
+        self.recycle_btn_group.addButton(self.radio_not_recyclable, 2)
+
+        options_layout.addWidget(self.radio_recyclable)
+        options_layout.addWidget(self.radio_not_recyclable)
+        options_layout.addStretch()
+
+        self.recyclability_options.setVisible(False)
+        layout.addWidget(self.recyclability_options)
+        group.setLayout(layout)
+        return group
+
+    def _toggle_recyclability(self, checked: bool):
+        self.recyclability_options.setVisible(checked)
 
     def refresh_data(self):
         self._load_initial_data()

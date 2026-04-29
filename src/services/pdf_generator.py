@@ -77,6 +77,8 @@ class PDFGenerator:
             print(f"Pierwszy batch: {context['batches'][0]}")
         # === KONIEC DEBUG ===
 
+        context['recyclability_point_nr'] = 16
+
         return context
 
     def generate_html_content(self, declaration: Declaration) -> str:

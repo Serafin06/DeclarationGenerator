@@ -81,6 +81,9 @@ class Declaration:
     substances_table: List[Dict] = field(default_factory=list)
     dual_use_list: List[Dict] = field(default_factory=list)
 
+    recyclability_enabled: bool = False
+    is_recyclable: bool = False
+
     def to_template_dict(self) -> Dict:
         """Konwertuje model do słownika dla szablonu Jinja2"""
         context = {
@@ -101,6 +104,7 @@ class Declaration:
             'substances_table': self.substances_table,
             'dual_use_list': self.dual_use_list
         }
+
 
         # Dane BOK
         if self.declaration_type == 'bok':
@@ -145,5 +149,8 @@ class Declaration:
                 'show_description': any_has_description,
                 'show_thickness': any_has_thickness
             }
+
+        context['recyclability_enabled'] = self.recyclability_enabled
+        context['is_recyclable'] = self.is_recyclable
 
         return context
