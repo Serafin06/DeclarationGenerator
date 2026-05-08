@@ -418,6 +418,7 @@ class TextEditorView(QWidget):
             section_names = {
                 'regulations': '📜 Regulacje prawne',
                 'statements': '✅ Oświadczenia zgodności',
+                'ppwr': '♻️ Opakowania i recykling (PPWR)',
                 'final_note': '📝 Notatka końcowa'
             }
 
@@ -440,7 +441,16 @@ class TextEditorView(QWidget):
                 'no_bisphenol': 'Brak bisfenoli',
                 'reach_compliance': 'Zgodność z REACH',
                 'heavy_metals': 'Metale ciężkie',
-                'food_contact_conditions': 'Warunki kontaktu z żywnością'
+                'food_contact_conditions': 'Warunki kontaktu z żywnością',
+                'recyclability_yes': 'Nadaje się do recyklingu (treść pkt 16)',
+                'recyclability_no': 'Nie nadaje się do recyklingu (treść pkt 16)',
+                # ppwr
+                'general': 'Informacja ogólna',
+                'substances': 'Substancje ograniczone / SVHC',
+                'pfas': 'Substancje PFAS',
+                'recyclability': 'Recyklowalność (ogólna)',
+                'minimisation': 'Minimalizacja materiału',
+                'documentation': 'Dokumentacja techniczna',
             }
 
             # Buduj formularz
