@@ -588,6 +588,9 @@ class BOKDeclarationView(QWidget):
         decl.declaration_type = 'bok'
         decl.language = 'pl' if self.radio_pl.isChecked() else 'en'
 
+        decl.recyclability_enabled = False
+        decl.is_recyclable = False
+
         # Dane klienta
         decl.client = ClientData(
             client_code=self.input_client_id.text(),
@@ -621,6 +624,7 @@ class BOKDeclarationView(QWidget):
             for i, b in enumerate(decl.batches):
                 print(f"  Batch {i}: {b.product_code} | {b.product_name} | {b.batch_number}")
         # === KONIEC DEBUG ===
+
 
         return decl
 
