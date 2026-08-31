@@ -24,6 +24,12 @@ class BOKDeclarationView(QWidget):
         self.pdf_generator = PDFGenerator(self.data_loader)
         self.available_materials = self.data_loader.get_materials_list()
 
+        # Prefiksy nazw produktów dla języków (tak jak w TECH)
+        self.product_prefixes = {
+            'pl': "Folia wielowarstwowa laminat",
+            'en': "Multilayer foil laminate"
+        }
+
         self._init_ui()
         self._test_db_connection()
         self._update_laminate_info()  # Wywołanie na start, żeby pole nie było puste
@@ -48,6 +54,12 @@ class BOKDeclarationView(QWidget):
         self.radio_pl = QRadioButton("Polski");
         self.radio_pl.setChecked(True);
         self.radio_en = QRadioButton("Angielski")
+
+        # === DODANO: Odświeżanie nazwy po zmianie języka ===
+        self.radio_pl.toggled.connect(self._update_laminate_info)
+        self.radio_en.toggled.connect(self._update_laminate_info)
+        # ===================================================
+
         lang_l.addWidget(self.radio_pl);
         lang_l.addWidget(self.radio_en);
         lang_group.setLayout(lang_l)
@@ -107,6 +119,16 @@ class BOKDeclarationView(QWidget):
         mat_layout.addWidget(self.label_mat3);
         mat_layout.addWidget(self.combo_mat3)
         s_layout.addLayout(mat_layout)
+
+        # === NOWOŚĆ: Edytowalna nazwa laminatu (jak w tech) ===
+        name_layout = QHBoxLayout()
+        name_layout.addWidget(QLabel("Nazwa laminatu (pkt 1):"))
+        self.input_product_name = QLineEdit()
+        # Stylowanie identyczne jak w wersji TECH
+        self.input_product_name.setStyleSheet("font-weight: bold; color: #2980b9; background-color: #f8f9fa;")
+        name_layout.addWidget(self.input_product_name)
+        s_layout.addLayout(name_layout)
+        # =======================================================
 
         self.preview_text = QLineEdit();
         self.preview_text.setReadOnly(True);
@@ -271,6 +293,13 @@ class BOKDeclarationView(QWidget):
         else:
             data = self.data_loader.build_structure_data(m1, m2)
             s = f"{m1}/{m2}"
+
+        # === NOWOŚĆ: Generowanie pełnej nazwy (jak w TECH) ===
+        lang = 'pl' if self.radio_pl.isChecked() else 'en'
+        prefix = self.product_prefixes.get(lang, self.product_prefixes['pl'])
+        full_name = f"{prefix} {s}"
+        self.input_product_name.setText(full_name)
+        # =====================================================
 
         sm = len(data.get('substances', []))
         du = len(data.get('dual_use', []))
@@ -559,6 +588,12 @@ class BOKDeclarationView(QWidget):
     def _validate_input(self):
         """Walidacja przed generowaniem dokumentu"""
 
+        # === NOWOŚĆ: Sprawdzenie nazwy laminatu ===
+        if not self.input_product_name.text().strip():
+            QMessageBox.warning(self, "Błąd", "Nazwa laminatu (pkt 1) nie może być pusta.")
+            return False
+        # ==========================================
+
         # Sprawdź klienta
         if not self.input_client_name.text().strip():
             QMessageBox.warning(self, "Błąd", "Brak nazwy klienta.")
@@ -604,11 +639,18 @@ class BOKDeclarationView(QWidget):
 
         if self.checkbox_trilayer.isChecked():
             m3 = self.combo_mat3.currentText()
-            decl.product = Product(name=f"{m1}/{m2}/{m3}", structure=f"{m1}/{m2}/{m3}")
             details = self.data_loader.build_structure_data_trilayer(m1, m2, m3)
         else:
-            decl.product = Product(name=f"{m1}/{m2}", structure=f"{m1}/{m2}")
             details = self.data_loader.build_structure_data(m1, m2)
+
+        # === NOWOŚĆ: Pobranie nazwy z edytowalnego pola ===
+        custom_name = self.input_product_name.text().strip()
+        if not custom_name:
+            # Fallback na wypadek, gdyby pole było puste
+            custom_name = f"{m1}/{m2}" if not self.checkbox_trilayer.isChecked() else f"{m1}/{m2}/{m3}"
+
+        decl.product = Product(name=custom_name, structure=custom_name)
+        # ================================================
 
         # ✅ NOWY KOD (POPRAWNY):
         decl.substances_table = details.get('substances', [])
