@@ -30,6 +30,11 @@ class BOKDeclarationView(QWidget):
             'en': "Multilayer foil laminate"
         }
 
+        self.expiry_default_texts = {
+            'pl': "12 miesięcy od daty produkcji",
+            'en': "12 months from production date"
+        }
+
         self._init_ui()
         self._test_db_connection()
         self._update_laminate_info()  # Wywołanie na start, żeby pole nie było puste
@@ -58,6 +63,8 @@ class BOKDeclarationView(QWidget):
         # === DODANO: Odświeżanie nazwy po zmianie języka ===
         self.radio_pl.toggled.connect(self._update_laminate_info)
         self.radio_en.toggled.connect(self._update_laminate_info)
+        self.radio_pl.toggled.connect(self._update_expiry_default)
+        self.radio_en.toggled.connect(self._update_expiry_default)
         # ===================================================
 
         lang_l.addWidget(self.radio_pl);
@@ -206,6 +213,8 @@ class BOKDeclarationView(QWidget):
         self.input_date = QDateEdit();
         self.input_date.setCalendarPopup(True);
         self.input_date.setDate(QDate.currentDate())
+        self.input_expiry = QLineEdit()
+        self.input_expiry.setText(self.expiry_default_texts['pl'])
         self.chk_show_thickness = QCheckBox();
         self.chk_show_thickness.setChecked(True)
         self.input_prod_thick1 = QLineEdit();
@@ -223,6 +232,8 @@ class BOKDeclarationView(QWidget):
         r4.addWidget(self.chk_show_date);
         r4.addWidget(QLabel("Data:"));
         r4.addWidget(self.input_date);
+        r4.addWidget(QLabel("Ważność:"));
+        r4.addWidget(self.input_expiry);
         r4.addSpacing(15)
         r4.addWidget(self.chk_show_thickness);
         r4.addWidget(QLabel("Grubości:"));
@@ -241,10 +252,10 @@ class BOKDeclarationView(QWidget):
         self._setup_checkbox_logic()
 
         # --- TABELA ---
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels([
             "Indeks", "Nazwa", "Nr Partii", "Ilość",
-            "Struktura", "Grubości", "Data Prod.", "Usuń"
+            "Struktura", "Grubości", "Data Prod.", "Ważność", "Usuń"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)  # Nazwa niech się rozciąga
@@ -304,6 +315,13 @@ class BOKDeclarationView(QWidget):
         sm = len(data.get('substances', []))
         du = len(data.get('dual_use', []))
         self.preview_text.setText(f"Struktura: {s} | Substancje SML: {sm} | Dual Use: {du}")
+
+    def _update_expiry_default(self):
+        lang = 'pl' if self.radio_pl.isChecked() else 'en'
+        current = self.input_expiry.text().strip()
+        # Podmień tylko jeśli user nie zdążył wpisać czegoś własnego
+        if current in self.expiry_default_texts.values():
+            self.input_expiry.setText(self.expiry_default_texts[lang])
 
     def _toggle_trilayer(self, checked):
         for w in [self.label_mat3, self.combo_mat3, self.label_prod_thick3, self.input_prod_thick3]:
@@ -506,6 +524,7 @@ class BOKDeclarationView(QWidget):
             batch_number=batch,
             quantity=qty,
             production_date=self.input_date.date().toPyDate(),
+            expiry_date=self.input_expiry.text().strip(),
             thickness1=g1,
             thickness2=g2,
             thickness3=g3,
@@ -530,6 +549,9 @@ class BOKDeclarationView(QWidget):
                   self.input_prod_thick2, self.input_prod_thick3]:
             f.clear()
 
+        lang = 'pl' if self.radio_pl.isChecked() else 'en'
+        self.input_expiry.setText(self.expiry_default_texts[lang])
+
         # Komunikat sukcesu (opcjonalnie)
         self.statusBar().showMessage(f"✅ Dodano: {idx}", 2000) if hasattr(self, 'statusBar') else None
 
@@ -543,11 +565,12 @@ class BOKDeclarationView(QWidget):
             self.table.setItem(i, 4, QTableWidgetItem(getattr(p, '_display_struct', '')))
             self.table.setItem(i, 5, QTableWidgetItem(getattr(p, '_display_thick', '')))
             self.table.setItem(i, 6, QTableWidgetItem(getattr(p, '_display_date', '')))
+            self.table.setItem(i, 7, QTableWidgetItem(p.expiry_date))
 
             btn = QPushButton("❌")
             btn.setFixedWidth(40)
             btn.clicked.connect(lambda ch, idx=i: (self.products.pop(idx), self._update_products_table()))
-            self.table.setCellWidget(i, 7, btn)
+            self.table.setCellWidget(i, 8, btn)
 
     def _create_action_buttons(self):
         l = QHBoxLayout()

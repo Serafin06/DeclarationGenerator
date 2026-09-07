@@ -133,7 +133,8 @@ class Declaration:
                     'qty': b.quantity if b.show_quantity else '',
                     'thickness': thickness_str,
                     'prod_date': b.production_date.strftime('%d.%m.%Y') if (
-                                b.production_date and b.show_production_date) else ''
+                            b.production_date and b.show_production_date) else '',
+                    'expiry_date': b.expiry_date
                 })
 
             context['batches'] = batches_data
