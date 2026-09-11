@@ -8,11 +8,13 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QComboBox, QPushButton, QGroupBox,
                              QMessageBox, QRadioButton, QFormLayout,
                              QTableWidget, QTableWidgetItem, QHeaderView,
-                             QFileDialog, QDateEdit, QCheckBox)
+                             QFileDialog, QDateEdit, QCheckBox, QDialog)
 from PyQt5.QtCore import QDate, Qt
 from src.models.declaration import Declaration, Product, ClientData, ProductBatch
 from src.services.pdf_generator import PDFGenerator
 from src.services.database_service import DatabaseService
+from src.gui.support.structure_select_dialog import StructureSelectDialog
+from src.utils.material_macher import MaterialMatcher
 
 
 class BOKDeclarationView(QWidget):
@@ -87,11 +89,20 @@ class BOKDeclarationView(QWidget):
         search_l.addStretch()
         self.input_client_name = QLineEdit();
         self.input_client_addr = QLineEdit();
+        # === Przełącznik typu dokumentu: Faktura / WZ ===
+        self.combo_invoice_type = QComboBox()
+        self.combo_invoice_type.addItems(["Faktura", "WZ"])
+        self.combo_invoice_type.setFixedWidth(90)
+        self.combo_invoice_type.currentTextChanged.connect(self._update_invoice_label)
+        self.label_invoice = QLabel("Faktura:")
         self.input_invoice = QLineEdit()
         c_form.addRow("ID / Szukaj:", search_l);
         c_form.addRow("Klient:", self.input_client_name)
         c_form.addRow("Adres:", self.input_client_addr);
-        c_form.addRow("Faktura:", self.input_invoice)
+        inv_row = QHBoxLayout();
+        inv_row.addWidget(self.combo_invoice_type);
+        inv_row.addWidget(self.input_invoice, 1)
+        c_form.addRow(self.label_invoice, inv_row)
         client_group.setLayout(c_form);
         layout.addWidget(client_group)
 
@@ -316,6 +327,10 @@ class BOKDeclarationView(QWidget):
         du = len(data.get('dual_use', []))
         self.preview_text.setText(f"Struktura: {s} | Substancje SML: {sm} | Dual Use: {du}")
 
+    def _update_invoice_label(self, text):
+        """Zmienia etykietę rzędu w zależności od typu: Faktura / WZ."""
+        self.label_invoice.setText(f"{text}:")
+
     def _update_expiry_default(self):
         lang = 'pl' if self.radio_pl.isChecked() else 'en'
         current = self.input_expiry.text().strip()
@@ -365,42 +380,52 @@ class BOKDeclarationView(QWidget):
             db_struct = data.get('product_structure', '').strip()
 
             if db_struct and self.checkbox_auto_structure.isChecked():
-                # ===== NOWA LOGIKA Z DOPASOWYWANIEM =====
+                # ===== DOPASOWANIE STRUKTURY (aliasy + fuzzy + dialog wyboru) =====
                 matched_materials, all_found = self.data_loader.parse_and_match_structure(db_struct)
+                structure_set = all_found
+                matched_manually = False
 
                 if not all_found:
-                    # Nie wszystkie materiały znaleziono
+                    # Nie wszystkie materiały znaleziono - dialog wyboru struktury
                     missing = [m for m in matched_materials if m not in self.available_materials]
-                    QMessageBox.warning(
-                        self,
-                        "⚠️ Nieznane materiały",
-                        f"Struktura z bazy: {db_struct}\n\n"
-                        f"Nie znaleziono materiałów: {', '.join(missing)}\n\n"
-                        f"Ustaw strukturę ręcznie."
-                    )
-                    # Nie ustawiaj automatycznie
-                else:
-                    # Wszystko OK - ustaw comboboxy
-                    is_trilayer = len(matched_materials) == 3 or (t3 and t3 not in ["0", "None", ""])
+                    db_parts = [p.strip() for p in db_struct.split('/') if p.strip()]
 
-                    if is_trilayer:
-                        self.checkbox_trilayer.setChecked(True)
-                        if len(matched_materials) >= 1:
-                            self.combo_mat1.setCurrentText(matched_materials[0])
-                        if len(matched_materials) >= 2:
-                            self.combo_mat2.setCurrentText(matched_materials[1])
-                        if len(matched_materials) >= 3:
-                            self.combo_mat3.setCurrentText(matched_materials[2])
-                    else:
-                        self.checkbox_trilayer.setChecked(False)
-                        if len(matched_materials) >= 1:
-                            self.combo_mat1.setCurrentText(matched_materials[0])
-                        if len(matched_materials) >= 2:
-                            self.combo_mat2.setCurrentText(matched_materials[1])
+                    # Podpowiedzi dla każdej warstwy (najlepsze dopasowanie lub None)
+                    suggestions = [self.data_loader.find_material_match(p) for p in db_parts]
+
+                    accepted = False
+                    if db_parts:
+                        dlg = StructureSelectDialog(
+                            db_struct, db_parts, self.available_materials,
+                            suggestions, parent=self
+                        )
+                        accepted = (dlg.exec_() == QDialog.Accepted and bool(dlg.selected_materials))
+                        if accepted:
+                            matched_materials = dlg.selected_materials
+                            structure_set = True
+                            matched_manually = True
+
+                    if not accepted:
+                        QMessageBox.warning(
+                            self,
+                            "⚠️ Nieznane materiały",
+                            f"Struktura z bazy: {db_struct}\n\n"
+                            f"Nie znaleziono materiałów: {', '.join(missing)}\n\n"
+                            f"Ustaw strukturę ręcznie."
+                        )
+                        # Nie ustawiaj automatycznie
+
+                if structure_set:
+                    # Ustaw comboboxy struktury
+                    is_trilayer = self._apply_structure_to_form(matched_materials, t3)
 
                     # Komunikat sukcesu
-                    struct_info = f"Struktura: {db_struct}\n"
-                    struct_info += f"Dopasowano: {'/'.join(matched_materials)}"
+                    if matched_manually:
+                        struct_info = f"Struktura: {db_struct}\n"
+                        struct_info += f"Ustawiono ręcznie: {'/'.join(matched_materials)}"
+                    else:
+                        struct_info = f"Struktura: {db_struct}\n"
+                        struct_info += f"Dopasowano: {'/'.join(matched_materials)}"
                     if t1 and t2:
                         struct_info += f"\nGrubości: {t1}/{t2}"
                         if is_trilayer and t3:
@@ -425,22 +450,26 @@ class BOKDeclarationView(QWidget):
 
                 # ===== PORÓWNAJ Z NORMALIZACJĄ =====
                 # Normalizuj obie struktury do porównania
-                from src.utils.material_macher import MaterialMatcher
-
                 current_norm = MaterialMatcher.normalize(current_struct)
                 db_norm = MaterialMatcher.normalize(db_struct)
 
                 if db_struct and current_norm != db_norm:
-                    reply = QMessageBox.warning(
-                        self,
-                        "⚠️ Niezgodność struktury",
-                        f"Bieżąca struktura: {current_struct}\n"
-                        f"Struktura w zleceniu: {db_struct}\n\n"
-                        f"Czy kontynuować dodawanie tego wyrobu?",
-                        QMessageBox.Yes | QMessageBox.No
-                    )
-                    if reply == QMessageBox.No:
-                        return
+                    # Próba dopasowania z tolerancją (aliasy/fuzzy), żeby nie
+                    # ostrzegać przy równoważnych zapisach (np. 'PE o-c' vs 'PE-O15')
+                    matched_db, ok = self.data_loader.parse_and_match_structure(db_struct)
+                    matched_norm = MaterialMatcher.normalize('/'.join(matched_db)) if ok else None
+
+                    if current_norm != matched_norm:
+                        reply = QMessageBox.warning(
+                            self,
+                            "⚠️ Niezgodność struktury",
+                            f"Bieżąca struktura: {current_struct}\n"
+                            f"Struktura w zleceniu: {db_struct}\n\n"
+                            f"Czy kontynuować dodawanie tego wyrobu?",
+                            QMessageBox.Yes | QMessageBox.No
+                        )
+                        if reply == QMessageBox.No:
+                            return
 
         # Ustaw grubości (dla każdego produktu osobno)
         self.input_prod_thick1.setText(t1)
@@ -449,6 +478,22 @@ class BOKDeclarationView(QWidget):
             self.input_prod_thick3.setText(t3)
 
         self._update_laminate_info()
+
+    def _apply_structure_to_form(self, matched_materials, t3_hint=''):
+        """
+        Ustawia dopasowane materiały w comboboxach struktury
+        (razem z przełącznikiem trilayer). Zwraca is_trilayer.
+        """
+        is_trilayer = len(matched_materials) == 3 or (t3_hint and t3_hint not in ["0", "None", ""])
+
+        self.checkbox_trilayer.setChecked(is_trilayer)
+        if len(matched_materials) >= 1:
+            self.combo_mat1.setCurrentText(matched_materials[0])
+        if len(matched_materials) >= 2:
+            self.combo_mat2.setCurrentText(matched_materials[1])
+        if len(matched_materials) >= 3:
+            self.combo_mat3.setCurrentText(matched_materials[2])
+        return is_trilayer
 
     # --- POZOSTAŁE METODY POMOCNICZE ---
     def _add_product_to_list(self):
@@ -597,6 +642,7 @@ class BOKDeclarationView(QWidget):
         self.products.clear();
         self._update_products_table()
         for f in [self.input_client_name, self.input_client_id, self.input_client_addr, self.input_invoice]: f.clear()
+        self.combo_invoice_type.setCurrentIndex(0)  # powrót na "Faktura"
 
     def _test_db_connection(self):
         res = self.db_service.testConnection()
@@ -627,12 +673,13 @@ class BOKDeclarationView(QWidget):
             QMessageBox.warning(self, "Błąd", "Brak wyrobów.\nDodaj przynajmniej jeden produkt.")
             return False
 
-        # Sprawdź numer faktury
+        # Sprawdź numer faktury/WZ (w zależności od wybranego typu)
+        doc_type = self.combo_invoice_type.currentText()
         if not self.input_invoice.text().strip():
             reply = QMessageBox.question(
                 self,
-                "Brak numeru faktury",
-                "Nie podano numeru faktury.\n\nCzy kontynuować bez faktury?",
+                f"Brak numeru {doc_type.lower()}",
+                f"Nie podano numeru {doc_type.lower()}.\n\nCzy kontynuować bez numeru?",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
@@ -654,7 +701,8 @@ class BOKDeclarationView(QWidget):
             client_code=self.input_client_id.text(),
             client_name=self.input_client_name.text(),
             client_address=self.input_client_addr.text(),
-            invoice_number=self.input_invoice.text()
+            invoice_number=self.input_invoice.text(),
+            invoice_type='wz' if self.combo_invoice_type.currentText() == 'WZ' else 'faktura'
         )
 
         # Struktura produktu
