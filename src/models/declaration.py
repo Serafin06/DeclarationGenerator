@@ -110,19 +110,23 @@ class Declaration:
         # Dane BOK
         if self.declaration_type == 'bok':
             lang = self.language
-            invoice_type = (self.client.invoice_type if self.client else 'faktura') or 'faktura'
-            is_wz = (invoice_type == 'wz')
 
-            context['client'] = {
-                'code': self.client.client_code if self.client else '',
-                'name': self.client.client_name if self.client else '',
-                'address': self.client.client_address if self.client else '',
-                'invoice': self.client.invoice_number if self.client else '',
-                'invoice_type': invoice_type,
-                # Gotowa etykieta dla szablonu (zależna od typu i języka)
-                'invoice_label': ('WZ No.' if is_wz else 'Invoice no.') if lang == 'en' \
-                        else ('Nr WZ' if is_wz else 'Nr faktury')
-            }
+            # Sekcja klienta tylko gdy klient faktycznie istnieje
+            # (inaczej szablon pokaże pusty box - {% if client %} wymaga braku klucza)
+            if self.client:
+                invoice_type = (self.client.invoice_type or 'faktura')
+                is_wz = (invoice_type == 'wz')
+
+                context['client'] = {
+                    'code': self.client.client_code,
+                    'name': self.client.client_name,
+                    'address': self.client.client_address,
+                    'invoice': self.client.invoice_number,
+                    'invoice_type': invoice_type,
+                    # Gotowa etykieta dla szablonu (zależna od typu i języka)
+                    'invoice_label': ('WZ No.' if is_wz else 'Invoice no.') if lang == 'en' \
+                            else ('Nr WZ' if is_wz else 'Nr faktury')
+                }
 
             # Przygotuj dane partii
             batches_data = []

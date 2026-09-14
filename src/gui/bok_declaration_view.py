@@ -93,8 +93,6 @@ class BOKDeclarationView(QWidget):
         self.combo_invoice_type = QComboBox()
         self.combo_invoice_type.addItems(["Faktura", "WZ"])
         self.combo_invoice_type.setFixedWidth(90)
-        self.combo_invoice_type.currentTextChanged.connect(self._update_invoice_label)
-        self.label_invoice = QLabel("Faktura:")
         self.input_invoice = QLineEdit()
         c_form.addRow("ID / Szukaj:", search_l);
         c_form.addRow("Klient:", self.input_client_name)
@@ -102,7 +100,7 @@ class BOKDeclarationView(QWidget):
         inv_row = QHBoxLayout();
         inv_row.addWidget(self.combo_invoice_type);
         inv_row.addWidget(self.input_invoice, 1)
-        c_form.addRow(self.label_invoice, inv_row)
+        c_form.addRow("", inv_row)
         client_group.setLayout(c_form);
         layout.addWidget(client_group)
 
@@ -327,10 +325,6 @@ class BOKDeclarationView(QWidget):
         du = len(data.get('dual_use', []))
         self.preview_text.setText(f"Struktura: {s} | Substancje SML: {sm} | Dual Use: {du}")
 
-    def _update_invoice_label(self, text):
-        """Zmienia etykietę rzędu w zależności od typu: Faktura / WZ."""
-        self.label_invoice.setText(f"{text}:")
-
     def _update_expiry_default(self):
         lang = 'pl' if self.radio_pl.isChecked() else 'en'
         current = self.input_expiry.text().strip()
@@ -482,9 +476,10 @@ class BOKDeclarationView(QWidget):
     def _apply_structure_to_form(self, matched_materials, t3_hint=''):
         """
         Ustawia dopasowane materiały w comboboxach struktury
-        (razem z przełącznikiem trilayer). Zwraca is_trilayer.
+        (razem z przełącznikiem trilayer). Zwraca is_trilayer (bool!).
         """
-        is_trilayer = len(matched_materials) == 3 or (t3_hint and t3_hint not in ["0", "None", ""])
+        has_t3_hint = bool(t3_hint) and t3_hint not in ["0", "None", ""]
+        is_trilayer = bool(len(matched_materials) == 3 or has_t3_hint)
 
         self.checkbox_trilayer.setChecked(is_trilayer)
         if len(matched_materials) >= 1:
