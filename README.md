@@ -26,11 +26,11 @@ sudo apt-get install wkhtmltopdf
 
 2. **Create a virtual environment:**
 ```bash
-python -m venv venv
+python -m venv .venv
 ```
 
 3. **Activate the environment:**
-- Windows: `venv\Scripts\activate`
+- Windows: `.venv\Scripts\activate`
 - Linux/Mac: `source venv/bin/activate`
 
 4. **Install dependencies:**
@@ -39,6 +39,13 @@ pip install -r requirements.txt
 ```
 
 ## Server Configuration
+
+### 0. Local secrets (`.env`)
+Credentials are **not** stored in the code. Copy `.env.example` to `.env` and fill in:
+```bash
+copy .env.example .env
+```
+`.env` is git-ignored and never leaves your machine. Values: `DB_SERVER`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `NETWORK_USER`, `NETWORK_PASSWORD` and optional `NETWORK_SHARE`.
 
 ### 1. Folder structure on the server
 On the server `\\192.168.14.14\` create the following structure:

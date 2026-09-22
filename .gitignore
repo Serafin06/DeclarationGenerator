@@ -1,0 +1,22 @@
+ # Srodowiska Python
+venv/
+.venv/
+
+# Cache Pythona
+__pycache__/
+*.py[cod]
+
+# PyCharm / VS Code
+.idea/
+.vscode/
+
+# Artefakty buildów
+build/
+dist/
+*.spec.bak
+
+# Sekrety (hasla, logi) - patrz .env.example
+.env
+
+# Pliki wyjsciowe aplikacji
+output/
