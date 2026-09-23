@@ -202,7 +202,7 @@ class BOKDeclarationView(QWidget):
         self.input_qty = QLineEdit();
         self.input_qty.setFixedWidth(80);
         self.combo_unit = QComboBox()
-        self.combo_unit.addItems(["mb", "kg"]);
+        self.combo_unit.addItems(["mb", "kg", "szt"]);
         self.combo_unit.setFixedWidth(60)
         r3.addWidget(self.chk_show_batch);
         r3.addWidget(QLabel("Partia:"));
@@ -536,7 +536,7 @@ class BOKDeclarationView(QWidget):
         # Pobieranie danych (teraz wiemy że są wypełnione)
         desc = self.input_art_desc.text().strip() if self.chk_show_name.isChecked() else ""
         batch = self.input_batch.text().strip() if self.chk_show_batch.isChecked() else ""
-        qty = f"{self.input_qty.text()} {self.combo_unit.currentText()}" if self.chk_show_qty.isChecked() else ""
+        qty = self.input_qty.text() if self.chk_show_qty.isChecked() else ""
         date_str = self.input_date.date().toString("yyyy-MM-dd") if self.chk_show_date.isChecked() else ""
 
         # Budowanie stringu grubości
@@ -563,6 +563,7 @@ class BOKDeclarationView(QWidget):
             product_name=desc,
             batch_number=batch,
             quantity=qty,
+            unit=self.combo_unit.currentText(),
             production_date=self.input_date.date().toPyDate(),
             expiry_date=self.input_expiry.text().strip(),
             thickness1=g1,
@@ -601,7 +602,8 @@ class BOKDeclarationView(QWidget):
             self.table.setItem(i, 0, QTableWidgetItem(p.product_code))
             self.table.setItem(i, 1, QTableWidgetItem(p.product_name))
             self.table.setItem(i, 2, QTableWidgetItem(p.batch_number))
-            self.table.setItem(i, 3, QTableWidgetItem(p.quantity))
+            qty_display = f"{p.quantity} {p.unit}" if getattr(p, 'unit', '') else p.quantity
+            self.table.setItem(i, 3, QTableWidgetItem(qty_display))
             self.table.setItem(i, 4, QTableWidgetItem(getattr(p, '_display_struct', '')))
             self.table.setItem(i, 5, QTableWidgetItem(getattr(p, '_display_thick', '')))
             self.table.setItem(i, 6, QTableWidgetItem(getattr(p, '_display_date', '')))

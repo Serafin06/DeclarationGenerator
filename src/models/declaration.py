@@ -46,6 +46,7 @@ class ProductBatch:
     product_name: str = ""
     production_date: Optional[date] = None
     quantity: str = ""
+    unit: str = ""  # 'mb', 'kg', 'szt' — tłumaczone przy generowaniu wg języka
     batch_number: str = ""
     expiry_date: str = ""
 
@@ -129,6 +130,12 @@ class Declaration:
                 }
 
             # Przygotuj dane partii
+            # Tłumaczenie jednostek ilości na język dokumentu
+            unit_map = {
+                'pl': {'mb': 'mb', 'kg': 'kg', 'szt': 'szt'},
+                'en': {'mb': 'rm', 'kg': 'kg', 'szt': 'pcs'}
+            }.get(lang, {})
+
             batches_data = []
             for b in self.batches:
                 # Buduj strukturę z grubościami
@@ -139,11 +146,15 @@ class Declaration:
                     else:
                         thickness_str = f"{b.thickness1}/{b.thickness2} μm"
 
+                # Sklej ilościę z przetłumaczoną jednostką
+                unit = unit_map.get(b.unit, b.unit)
+                qty_str = f"{b.quantity} {unit}" if unit else b.quantity
+
                 batches_data.append({
                     'index': b.product_code,
                     'description': b.product_name if b.show_name else '',
                     'batch_no': b.batch_number if b.show_batch else '',
-                    'qty': b.quantity if b.show_quantity else '',
+                    'qty': qty_str if b.show_quantity else '',
                     'thickness': thickness_str,
                     'prod_date': b.production_date.strftime('%d.%m.%Y') if (
                             b.production_date and b.show_production_date) else '',
