@@ -4,6 +4,22 @@ Uruchamia główne okno GUI
 """
 import sys
 import io
+import os
+
+# Obsługa lokalizacji GTK po spakowaniu w PyInstallerze
+if getattr(sys, 'frozen', False):
+    # Katalog roboczy wygenerowany tymczasowo przez PyInstaller
+    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    gtk_bin = os.path.join(base_dir, 'gtk_bin')
+else:
+    # Lokalna ścieżka deweloperska
+    gtk_bin = r"C:\Users\grabowski\GTK3\gtk-nsis-pack\bin"
+
+if os.path.exists(gtk_bin):
+    os.add_dll_directory(gtk_bin)
+    os.environ['PATH'] = gtk_bin + os.path.pathsep + os.environ.get('PATH', '')
+
+import weasyprint
 
 # Odpornosc konsoli Windows (cp1250) na znaki spoza tej strony kodowej (np. emoji)
 # - zapobiega UnicodeEncodeError przy print() z emoji
